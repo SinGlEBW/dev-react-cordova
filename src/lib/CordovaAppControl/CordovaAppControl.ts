@@ -39,7 +39,7 @@ export class CordovaAppControl extends CordovaConfig {
   private static listOrientation_cb: any[] = [];
   private static Keyboard = new CordovaKeyboard();
   private static isCheckEventOrientationMobileForAndroidNav = false;
-
+ 
   static keyboard = {
     //Запуск в initFullScreen
     onWatch(cb: Parameters<typeof CordovaAppControl.Keyboard.onWatch>[0]) {
@@ -213,6 +213,17 @@ export class CordovaAppControl extends CordovaConfig {
   };
 
   public static initEventsPauseResume(cbInfo: (status: "on" | "off") => void) {
+    if(CordovaAppControl.isIOS()){
+      document.addEventListener('active', (e) => {
+        console.log('Событие: active :', e);
+        cbInfo('on');
+      });
+      document.addEventListener('resign', (e) => {
+        console.log("Событие: resign: ", e);
+        cbInfo('off');
+      });
+      return;
+    }
     document.addEventListener("resume", (e) => {
       console.log("Событие: resume: ", e);
       cbInfo("on");
@@ -226,6 +237,7 @@ export class CordovaAppControl extends CordovaConfig {
 
   public static setColorSystemBars({ isDarkIcon, colors, isDarkAndroidNavIcon }: ColorsSystemBarsProps["setColorSystemBars"]) {
     ColorSystemBars.setColorSystemBars({ isDarkIcon, colors, isDarkAndroidNavIcon });
+    document.documentElement.setAttribute('data-theme', (!isDarkIcon) ? "dark" : "light" )
   }
 
   public static onOrientation(cb: ({ isPortrait }: Pick<CordovaAppControlPropsPrivate["getBottomSize"], 'isPortrait'>) => void) {
@@ -260,7 +272,7 @@ export class CordovaAppControl extends CordovaConfig {
 }
 
 CordovaAppControl.onGetAutoBottomSize(({ bottomSize }) => {
-  console.log("onGetAutoBottomSize(bottomSize)1", bottomSize);
+  console.log("onGetAutoBottomSize(bottomSize): ", bottomSize);
   ControlMobileAutoHeight.set({ autoBottomSize: bottomSize });
 });
 /*-------------------------------------------------------------------------------------------------*/

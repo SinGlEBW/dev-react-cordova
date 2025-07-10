@@ -19,7 +19,7 @@ export class ColorSystemBars extends CordovaConfig {
   static color1 = { dark: "", light: "" };
   static color2 = { dark: "", light: "" };
 
-  static setColorSystemBars = ({ isDarkIcon, isDarkAndroidNavIcon, colors }:ColorsSystemBarsProps['setColorSystemBars']) => { console.log("isDarkTheme", isDarkIcon);
+  static setColorSystemBars = ({ isDarkIcon, isDarkAndroidNavIcon, colors }:ColorsSystemBarsProps['setColorSystemBars']) => {
  
     const { color1, color2 } = colors;
     ColorSystemBars.color1 = color1;
@@ -44,11 +44,15 @@ export class ColorSystemBars extends CordovaConfig {
   static setBgColorAll(hex1: string, hex2?: string) {
     if (ColorSystemBars.isAndroid()) {
       const { AndroidBars } = ColorSystemBars.getPlugins();
-      if (hex2) {
-        AndroidBars.bgColorStatusBar(hex1);
-        AndroidBars.bgColorNavBar(hex2);
-      } else {
-        AndroidBars.bgColorAll(hex1);
+      if(AndroidBars){
+        if (hex2) {
+          AndroidBars.bgColorStatusBar(hex1);
+          AndroidBars.bgColorNavBar(hex2);
+        } else {
+          AndroidBars.bgColorAll(hex1);
+        }
+      }else{
+        console.error("Не установлен плагин cordova-plugin-android-bars")
       }
     }
 

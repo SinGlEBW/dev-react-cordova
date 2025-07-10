@@ -15,6 +15,7 @@ if (window.cordova) {
     startApp();
     // let isKeyboardHeight = false;
     CordovaAppControl.keyboard.onWatch((data) => {
+      
       console.log('onWatch (data)', data);//{height: number, isShow: boolean }
       // if (!isKeyboardHeight && data.isShow) {
       //   isKeyboardHeight = true;

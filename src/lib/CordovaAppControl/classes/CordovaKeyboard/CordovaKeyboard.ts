@@ -59,12 +59,16 @@ export class CordovaKeyboard extends CordovaConfig {
 
     if (CordovaKeyboard.isAndroid()) {
       const { AndroidBars } = CordovaKeyboard.getPlugins();
-      const cb = ({isShow, keyboardHeight, }: Pick<CordovaKeyboardPropsPrivate['setKeyboardHeight'], 'isShow' | 'keyboardHeight'>) => {
-          console.log('AndroidBars.on (height)', keyboardHeight);
-          this.setKeyboardHeight({ elRoot, isShow, keyboardHeight })
-          this.getData && typeof this.getData === "function" && this.getData({ isShow, height: keyboardHeight });
+      const cb = ({ isShow, height }: {isShow: boolean, height: number}) => {
+          console.log('AndroidBars.on (height)', height);
+          this.setKeyboardHeight({ elRoot, isShow, keyboardHeight: height })
+          this.getData && typeof this.getData === "function" && this.getData({ isShow, height });
         };
-        cb && AndroidBars.on("watchKeyboard", cb);
+        if(AndroidBars){
+          cb && AndroidBars.on("watchKeyboard", cb);
+        }else{
+          console.error("Не установлен плагин cordova-plugin-android-bars")
+        }
     }
 
     if (CordovaKeyboard.isIOS()) {
