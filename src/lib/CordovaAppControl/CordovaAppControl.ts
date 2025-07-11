@@ -1,5 +1,5 @@
 import { CordovaConfig } from "./classes/CordovaConfig";
-import { CordovaKeyboard } from "./classes/CordovaKeyboard/CordovaKeyboard";
+import { CordovaKeyboard, CordovaKeyboardProps } from "./classes/CordovaKeyboard/CordovaKeyboard";
 import { ColorsSystemBarsProps, ColorSystemBars } from "./classes/ColorSystemBars/ColorSystemBars";
 import { ControlMobileAutoHeight } from "./components/ControlMobilePadding/store";
 
@@ -8,11 +8,13 @@ export interface CordovaAppControlProps {
   initFullScreen: {
     onHeightBars?(d: Record<"heightStatus" | "heightNav", number>): void;
     onGetAutoBottomSize?(d: { bottomSize: number }): void;
+    onWatchOpenKeyboard?: CordovaKeyboardProps['getData'];
+
     isPaddingTopAndroid?: boolean;
     isPaddingBottomAndroid?: boolean;
     isPaddingBottomIos?: boolean;
     isPaddingTopIos?: boolean;
-
+    isAutoSizeHeightRootElement?: boolean;
     isFullScreen: boolean;
   };
 }
@@ -22,6 +24,7 @@ interface CordovaAppControlPropsPrivate {
     isPaddingTop: boolean;
     heightStatus: number;
     heightNav: number;
+    isAutoSizeHeightRootElement: boolean;
   };
   getBottomSize: {
     isPortrait: boolean;
@@ -40,35 +43,35 @@ export class CordovaAppControl extends CordovaConfig {
   private static Keyboard = new CordovaKeyboard();
   private static isCheckEventOrientationMobileForAndroidNav = false;
  
-  static keyboard = {
-    //Запуск в initFullScreen
-    onWatch(cb: Parameters<typeof CordovaAppControl.Keyboard.onWatch>[0]) {
-      const on: Parameters<typeof CordovaAppControl.Keyboard.onWatch>[0] = (data) => {
-        CordovaAppControl.isShowKeyboard = data.isShow;
+  // static keyboard = {
+  //   //Запуск в initFullScreen
+  //   onWatch(cb: Parameters<typeof CordovaAppControl.Keyboard.onWatch>[0], isAutoRootElement = true) {
+  //     const on: Parameters<typeof CordovaAppControl.Keyboard.onWatch>[0] = (data) => {
+  //       CordovaAppControl.isShowKeyboard = data.isShow;
 
-        const bottomSize = CordovaAppControl.getBottomSize({
-          currentHeightKeyboard: data.height,
-          heightNav: CordovaAppControl.heightNav,
-          isPortrait: CordovaAppControl.isPortrait,
-        });
+  //       const bottomSize = CordovaAppControl.getBottomSize({
+  //         currentHeightKeyboard: data.height,
+  //         heightNav: CordovaAppControl.heightNav,
+  //         isPortrait: CordovaAppControl.isPortrait,
+  //       });
 
-        CordovaAppControl.Keyboard.getRootElement();
-        CordovaAppControl.setAutoBottomSize({ bottomSize });
-        const rootEl = CordovaAppControl.Keyboard.getRootElement();
-        rootEl.style.setProperty("height", `calc(100% - ${bottomSize}px)`);
-        cb && cb(data);
-      };
-      CordovaAppControl.Keyboard.onWatch(on);
-    },
-  };
-  static setRootElement(el: HTMLElement) {
-    CordovaAppControl.Keyboard.setRootElement(el);
-  }
+       
+  //       CordovaAppControl.setAutoBottomSize({ bottomSize });//Для компонента
+  //       isAutoRootElement && CordovaAppControl.setHeightInRootElement(bottomSize);//автоматом сразу на элемент
+  //       cb && cb(data);
+  //     };
+  //     CordovaAppControl.Keyboard.onWatch(on);
+  //   },
+  // };
+  
+  static setRootElement = CordovaAppControl.Keyboard.setRootElement
+
   private static orientationMobileControl({
     isPaddingBottom,
     isPaddingTop,
     heightStatus,
     heightNav,
+    isAutoSizeHeightRootElement,
   }: CordovaAppControlPropsPrivate["orientationMobileControl"]) {
     // console.dir("orientationMobileControl");
     if (!CordovaAppControl.isCheckEventOrientationMobileForAndroidNav) {
@@ -89,8 +92,7 @@ export class CordovaAppControl extends CordovaConfig {
           });
 
           CordovaAppControl.setAutoBottomSize({ bottomSize });
-          const rootEl = CordovaAppControl.Keyboard.getRootElement();
-          rootEl.style.setProperty("height", `calc(100% - ${bottomSize}px)`);
+          isAutoSizeHeightRootElement && CordovaAppControl.setHeightInRootElement(bottomSize);//автоматом сразу на элемент
         }
       };
 
@@ -124,11 +126,28 @@ export class CordovaAppControl extends CordovaConfig {
     isPaddingTopAndroid = false,
     isPaddingBottomIos = false,
     isPaddingTopIos = false,
-
+    isAutoSizeHeightRootElement = true,
     onHeightBars,
+    onWatchOpenKeyboard
   }: CordovaAppControlProps["initFullScreen"]) => {
     CordovaAppControl.Keyboard.watchStart();
-    //INFO: Открытие клавиатуры на body, отступ nav на html
+
+    onWatchOpenKeyboard && CordovaAppControl.Keyboard.onWatch((data) => {
+      CordovaAppControl.isShowKeyboard = data.isShow;
+
+      const bottomSize = CordovaAppControl.getBottomSize({
+        currentHeightKeyboard: data.height,
+        heightNav: CordovaAppControl.heightNav,
+        isPortrait: CordovaAppControl.isPortrait,
+      });
+
+      CordovaAppControl.setAutoBottomSize({ bottomSize });//Для компонента
+      isAutoSizeHeightRootElement && CordovaAppControl.setHeightInRootElement(bottomSize);//автоматом сразу на элемент
+      onWatchOpenKeyboard(data)
+    });
+
+
+
     if (CordovaAppControl.isAndroid()) {
       const { AndroidBars } = CordovaAppControl.getPlugins();
       AndroidBars?.setFullScreen(isFullScreen);
@@ -145,6 +164,7 @@ export class CordovaAppControl extends CordovaConfig {
             isPaddingTop: isPaddingTopAndroid,
             heightStatus,
             heightNav,
+            isAutoSizeHeightRootElement
           });
         });
       }
@@ -154,12 +174,13 @@ export class CordovaAppControl extends CordovaConfig {
     if (CordovaAppControl.isIOS()) {
       window?.StatusBar?.overlaysWebView(isFullScreen);
       const CSS_CONST_TOP = "--android_ios11-top";
+      const { body } = document;
       const CSS_CONST_BOTTOM = "--ios11-bottom";
-      document.body.style.setProperty(CSS_CONST_TOP, "env(safe-area-inset-top)");
-      document.body.style.setProperty(CSS_CONST_BOTTOM, "env(safe-area-inset-bottom)");
+      body.style.setProperty(CSS_CONST_TOP, "env(safe-area-inset-top)");
+      body.style.setProperty(CSS_CONST_BOTTOM, "env(safe-area-inset-bottom)");
 
       const getCssValueByProperty = (prop:string) => {
-        return parseInt(getComputedStyle(document.body).getPropertyValue(prop));
+        return parseInt(getComputedStyle(body).getPropertyValue(prop));
       };
 
       console.log("isPaddingBottomIos", isPaddingBottomIos);
@@ -181,6 +202,7 @@ export class CordovaAppControl extends CordovaConfig {
             isPaddingTop: isPaddingTopIos,
             heightStatus,
             heightNav,
+            isAutoSizeHeightRootElement
           });
           clearTimeout(idTimeout);
         }, 250);
@@ -269,10 +291,15 @@ export class CordovaAppControl extends CordovaConfig {
       window.removeEventListener("orientationchange", findCb.modificationCb);
     }
   }
+
+  private static setHeightInRootElement(size: number){
+        const rootEl = CordovaAppControl.Keyboard.getRootElement();
+        rootEl.style.transition = "height .1s ease";
+        rootEl.style.setProperty("height", `calc(100% - ${size}px)`);
+  }
 }
 
 CordovaAppControl.onGetAutoBottomSize(({ bottomSize }) => {
-  console.log("onGetAutoBottomSize(bottomSize): ", bottomSize);
   ControlMobileAutoHeight.set({ autoBottomSize: bottomSize });
 });
 /*-------------------------------------------------------------------------------------------------*/

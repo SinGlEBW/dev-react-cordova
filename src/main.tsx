@@ -14,20 +14,23 @@ if (window.cordova) {
   document.addEventListener('deviceready', () => {
     startApp();
     // let isKeyboardHeight = false;
-    CordovaAppControl.keyboard.onWatch((data) => {
+    // CordovaAppControl.keyboard.onWatch((data) => {
       
-      console.log('onWatch (data)', data);//{height: number, isShow: boolean }
-      // if (!isKeyboardHeight && data.isShow) {
-      //   isKeyboardHeight = true;
-      //   // store.dispatch(setKeyboardHeight(data.height));
-      // }
-      // store.dispatch(setKeyboardInfo(data));
-    });
+    //   console.log('onWatch (data)', data);//{height: number, isShow: boolean }
+    //   // if (!isKeyboardHeight && data.isShow) {
+    //   //   isKeyboardHeight = true;
+    //   //   // store.dispatch(setKeyboardHeight(data.height));
+    //   // }
+    //   // store.dispatch(setKeyboardInfo(data));
+    // });
     CordovaAppControl.dynamicMetaContentProperty();
     CordovaAppControl.initFullScreen({
       isFullScreen: true, 
       isPaddingBottomAndroid: true,
       isPaddingBottomIos: true,
+      onWatchOpenKeyboard: (data) => {
+        
+      },
       onHeightBars: (data) => {
         console.log('onHeightBars (data)', data);//{heightStatus: number, heightNav: number }
         // store.dispatch(setMobileHeightBars({

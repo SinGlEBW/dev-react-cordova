@@ -1,7 +1,7 @@
 {
   "name": "dev-react-cordova",
   "private": false,
-  "version": "1.0.8",
+  "version": "1.0.10",
   "author": "SinGlEBW",
   "license": "MIT",
   "type": "module",
