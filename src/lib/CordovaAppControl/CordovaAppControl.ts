@@ -293,9 +293,9 @@ export class CordovaAppControl extends CordovaConfig {
   }
 
   private static setHeightInRootElement(size: number){
-        const rootEl = CordovaAppControl.Keyboard.getRootElement();
-        rootEl.style.transition = "height .1s ease";
-        rootEl.style.setProperty("height", `calc(100% - ${size}px)`);
+    const rootEl = CordovaAppControl.Keyboard.getRootElement();
+    rootEl.style.transition = "height .1s ease";
+    rootEl.style.setProperty("height", `calc(100% - ${size}px)`);
   }
 }
 
