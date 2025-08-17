@@ -35,9 +35,6 @@ export class ColorSystemBars extends CordovaConfig {
 
     const hex1 = ColorSystemBars?.color1[status];
     const hex2 = ColorSystemBars?.color2[status];
-    console.log("hex1: ", hex1);
-    console.log("hex2: ", hex2);
-
     return [hex1, hex2];
   }
 
@@ -78,7 +75,6 @@ export class ColorSystemBars extends CordovaConfig {
       AndroidBars?.setDarkIcon(isDarkIcon, isDarkAndroidNavIcon);
     }
     if (ColorSystemBars.isIOS()) {
-      console.log('isDarkIcon', isDarkIcon);
       isDarkIcon ?  window?.StatusBar?.styleDefault() : window?.StatusBar?.styleLightContent();
     }
   }

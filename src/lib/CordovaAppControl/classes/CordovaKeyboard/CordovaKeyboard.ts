@@ -54,7 +54,6 @@ export class CordovaKeyboard extends CordovaConfig {
   }
 
   watchStart() {
-    console.log('Запущен watchStart()')
     const elRoot = this.getRootElement();
 
     if (CordovaKeyboard.isAndroid()) {

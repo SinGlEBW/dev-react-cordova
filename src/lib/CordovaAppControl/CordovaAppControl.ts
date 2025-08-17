@@ -183,14 +183,14 @@ export class CordovaAppControl extends CordovaConfig {
         return parseInt(getComputedStyle(body).getPropertyValue(prop));
       };
 
-      console.log("isPaddingBottomIos", isPaddingBottomIos);
+      // console.log("isPaddingBottomIos", isPaddingBottomIos);
 
       if (isPaddingBottomIos || isPaddingTopIos) {
         const idTimeout = setTimeout(() => {
           const heightStatus = getCssValueByProperty(CSS_CONST_TOP);
           const heightNav = getCssValueByProperty(CSS_CONST_BOTTOM);
-          console.log("heightStatus", heightStatus);
-          console.log("heightNav", heightNav);
+          // console.log("heightStatus", heightStatus);
+          // console.log("heightNav", heightNav);
 
           CordovaAppControl.heightStatus = heightStatus;
           CordovaAppControl.heightNav = heightNav;
@@ -228,7 +228,6 @@ export class CordovaAppControl extends CordovaConfig {
       (e) => {
         e.preventDefault();
         cb && cb();
-        console.log("backbutton", e);
       },
       false
     );
