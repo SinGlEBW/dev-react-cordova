@@ -145,24 +145,33 @@ await storage.getData("Test"); //SELECT * FROM Test
   } 
 */
 
-await storage.getData("Test", { where: { key: "listNames" } }, true); //SELECT * FROM Test WHERE key = 'listNames'
+/* 
+  _key - это уникальное значение таблицы. Существует только в таблице
+
+#   Ключ         Значение
+0	 "user18"    {_key: 'user18', id: 13, name: 'At dd', age: 33, createdAt: '2025-10-06T12:47:01.102Z', …}
+*/
+await storage.getData("users", { where: { _key: "user18" } }, true); //SELECT * FROM Test WHERE key = 'listNames'
 /* 
   promise -> {
     msg: "Данные найдены",
     status: true,
     values: [
       {
-        id: 1,
-        key: "listNames",
-        createdAt: "2023-02-07 14:03:23",
-        updateAt: "2023-02-13 09:59:03",
-        value: [ {name: "Jon"}, {name: "Brain"} ] <-- isParse
+        id: 13,
+        key: "user18",
+        name: 'Вася Пупкин',
+        age: 33,
+        createdAt: "2025-10-06T12:47:01.102Z",
+        updateAt: "2025-10-16T12:47:01.102Z",
+        list: [ {key: "13"}, {key: "2321"} ] <-- isParse
       }
     ]
   } 
 */
 
 await storage.removeData(nameTable, { where, whereKey, ignoreWhere, condition });
+//ignoreWhere будет работать для всех сценариев удаления, кроме точечного удаления по _key.
 /*
   { whereKey: {name: ['Jon', "Brain"], age: [25, 30]}} }
   'DELETE FROM ${nameTable} WHERE name = "Jon" OR name = "Brain", age = "17" OR age = "20"'
@@ -181,16 +190,43 @@ await storage.removeData('users', {
   whereKey: {
     name: ['John', 'Jane']  // Удалит John OR Jane
   },
-  condition: 'OR'
 });
 
 // ✅ Удаление с ignoreWhere (NOT условия)
 await storage.removeData('users', {
-  where: { isActive: false },
+  where: {
+    age: 30 // возраст = 30
+  },
   ignoreWhere: {
-    role: ['admin', 'moderator']  // Но НЕ админы и модераторы
+    role: ['admin'] // НЕ удалять админов
   }
 });
+
+await storage.removeData('users', {
+  whereKey: {
+    status: ['inactive', 'banned'] // статус inactive ИЛИ banned
+  },
+  ignoreWhere: {
+    id: ['user123', 'user456'] // НЕ удалять этих пользователей
+  }
+});
+
+await storage.removeData('settings', {
+  ignoreWhere: {
+    _key: ['config1', 'config2'] // Удалить все, КРОМЕ записей с этими ключами
+  }
+});
+
+await storage.removeData('products', {
+  where: {
+    category: 'electronics'
+  },
+  ignoreWhere: {
+    brand: ['Samsung', 'Apple'], // НЕ удалять Samsung и Apple
+    status: ['new'] // И НЕ удалять новые товары
+  }
+});
+// Удалит electronics, НО исключит Samsung, Apple и новые товары
 
 await storage.dropTable('users')
 

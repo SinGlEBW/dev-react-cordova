@@ -4,7 +4,7 @@ import { UpdatePayloadProps } from './types';
 
 export type GenerateSQLUpdateProps = Omit<UpdatePayloadProps, 'connect'>
 
-export const generateSQLUpdate = ({nameTable, payload, config: { where, condition }, isUpdateAt}: GenerateSQLUpdateProps) => {
+export const generateSQLUpdate = ({nameTable, payload, config: { where }, isUpdateAt}: GenerateSQLUpdateProps) => {
   const values: any[] = [];
 
   const setParts: string[] = [];
@@ -17,7 +17,7 @@ export const generateSQLUpdate = ({nameTable, payload, config: { where, conditio
     setParts.unshift("updateAt = datetime('now','localtime')");
   }
 
-  let sql = `UPDATE ${nameTable} SET ${setParts.join(", ")}`;
+  const sql = `UPDATE ${nameTable} SET ${setParts.join(", ")}`;
 
   if (where && Object.keys(where).length) {
     const whereParts: string[] = [];
@@ -25,7 +25,6 @@ export const generateSQLUpdate = ({nameTable, payload, config: { where, conditio
       whereParts.push(`${key} = ?`);
       values.push(convertByTypeForDB(value));
     }
-    sql += ` WHERE ${whereParts.join(` ${condition} `)}`;
   } else {
     throw new Error("WHERE условие обязательно для UPDATE запроса");
   }

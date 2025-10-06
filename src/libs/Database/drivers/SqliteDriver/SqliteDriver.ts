@@ -37,16 +37,16 @@ export class SqliteDriver{
     });
   };
 
-  updateData: StorageDriverProps["updateData"] = (nameTable, payload, { where, condition }) => {
+  updateData: StorageDriverProps["updateData"] = (nameTable, payload, { where }) => {
     return new Promise((resolve, reject) => {
-      this.getData(nameTable, { where, condition })
+      this.getData(nameTable, { where })
         .then(({ status, values }) => {
           const isUpdateAt = values[0] && "createdAt" in values[0];
           updateDataSqlite({
             connect: this.openDB(),
             nameTable,
             payload,
-            config: { where, condition },
+            config: { where },
             isUpdateAt,
           })
             .then(resolve)

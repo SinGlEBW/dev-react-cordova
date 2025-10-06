@@ -12,10 +12,14 @@ const storage = new Storage({
 
 export function App() {
 
-// storage.setData('users', 17, { name: 'John Doe', id: 30 } );
+
+storage.setData('users', "17", { name: 'John Doe', age: 30 } );
+storage.setData('users', "15", { name: 'Вася Пупкин', age: 33 } );
+storage.setData('settings', "profile", { name: 'Вася Пупкин', age: 33 } );
 // storage.setData('settings', 15, {}, {isCreateDate: false}); // Версия 1 → 2
 // storage.setData('cache', "415555",{});    // Версия 2 → 3
-// storage.dropTable('cache');
+
+
 
 
   return (

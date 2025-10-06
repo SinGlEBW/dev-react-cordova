@@ -10,7 +10,7 @@ export interface ResultGetDataSqlite extends BaseReturnProps {
 
 
 export interface Params {
-  where?: object;
+  where?: {[key in string]: string};
   whereKey?: Record<string, string[]>;
   ignoreWhere?: Record<string, string[]>;
   condition?: "AND" | "OR";
@@ -23,16 +23,16 @@ export interface BaseSqliteOptions {
 
 
 export interface UpdateWhere {
-  where: object;
-  condition?: "AND" | "OR";
+  where: {[key in string]: string};
+  // condition?: "AND" | "OR";
 }
 
 // export type BaseFunctionSqlite = (connect: Database, nameTable: string) => Promise<BaseReturnProps & { tables?: string[] }>;
 export interface StorageDriverProps{
   dropTable(nameTable: string): Promise<BaseReturnProps>;
-  getData(nameTable: string, params?: Params, isParse?: boolean): Promise<ResultGetDataSqlite>;
+  getData(nameTable: string, params?: Omit<Params, 'condition'>, isParse?: boolean): Promise<ResultGetDataSqlite>;
   setData(nameTable: string, key: string | number, payload: object, options?: BaseSqliteOptions): Promise<BaseReturnProps>;
-  updateData(nameTable: string, payload: object, { where, condition }: UpdateWhere): Promise<BaseReturnProps>;
+  updateData(nameTable: string, payload: object, { where }: UpdateWhere): Promise<BaseReturnProps>;
   removeData(nameTable: string, params?: Params): Promise<BaseReturnProps>;
   checkTable(nameTable: string): Promise<BaseReturnProps>;
   query(sql: string): Promise<BaseReturnProps>;

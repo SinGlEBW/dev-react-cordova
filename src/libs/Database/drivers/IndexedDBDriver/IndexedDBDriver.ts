@@ -22,11 +22,12 @@ export class IndexedDBDriver {
         const db = (event.target as IDBOpenDBRequest).result;
         if (!db.objectStoreNames.contains(nameTable)) {
           const store = db.createObjectStore(nameTable, {
-            keyPath: "id",
-            autoIncrement: true,
+            autoIncrement: false,
           });
-          store.createIndex("createdAt", "createdAt", { unique: false });
-          store.createIndex("updateAt", "updateAt", { unique: false });
+          store.createIndex("_key", "_key", { unique: true });
+          store.createIndex("id", "id", { unique: false });
+          // store.createIndex("createdAt", "createdAt", { unique: false });
+          // store.createIndex("updateAt", "updateAt", { unique: false });
         }
       };
 
@@ -114,17 +115,15 @@ export class IndexedDBDriver {
 
   dropTable: StorageDriverProps["dropTable"] = async (nameTable) => {
     try {
-      
       await this.openDB();
       if (!this.db) return { status: false, msg: "База не открыта" };
 
-      // ✅ Проверяем что таблица вообще существует
       if (!this.db.objectStoreNames.contains(nameTable)) {
         return { status: false, msg: `Таблица ${nameTable} не существует` };
       }
 
       return new Promise((resolve) => {
-        debugger
+        debugger;
         const currentVersion = this.db?.version || this.version;
         const newVersion = currentVersion + 1;
         this.closeDB();
@@ -165,10 +164,8 @@ export class IndexedDBDriver {
     try {
       await this.ensureTableExists(nameTable);
 
-      const store = this.getStore(nameTable, "readwrite");
-
       const record = {
-        id: key,
+        _key: key,
         ...payload,
         ...(options?.isCreateDate !== false && {
           createdAt: new Date().toISOString(),
@@ -176,24 +173,31 @@ export class IndexedDBDriver {
         }),
       };
 
-      return new Promise((resolve) => {
-        const request = store.add(record);
-
-        request.onsuccess = () => {
-          resolve({ status: true, msg: `Данные добавлены в ${nameTable}` });
-        };
-
-        request.onerror = () => {
-          // Если запись с таким key уже существует - делаем update
-          if (request.error?.name === "ConstraintError") {
-            this.updateData(nameTable, payload, { where: { id: key } })
-              .then(resolve)
-              .catch(() => resolve({ status: false, msg: `Ошибка обновления данных в ${nameTable}` }));
-          } else {
-            resolve({ status: false, msg: `Ошибка добавления данных в ${nameTable}` });
+      try {
+        const addStore = this.getStore(nameTable, "readwrite");
+        await new Promise((resolve, reject) => {
+          const request = addStore.add(record, key);
+          request.onsuccess = () => resolve(true);
+          request.onerror = () => reject(request.error);
+        });
+        return { status: true, msg: `Данные добавлены в ${nameTable}` };
+      } catch (addError) {
+        if ((addError as any)?.name === "ConstraintError") {
+          try {
+            const putStore = this.getStore(nameTable, "readwrite");
+            await new Promise((resolve, reject) => {
+              const request = putStore.put(record, key);
+              request.onsuccess = () => resolve(true);
+              request.onerror = () => reject(request.error);
+            });
+            return { status: true, msg: `Данные обновлены в ${nameTable}` };
+          } catch (putError) {
+            return { status: false, msg: `Ошибка обновления данных в ${nameTable}: ${putError}` };
           }
-        };
-      });
+        } else {
+          return { status: false, msg: `Ошибка добавления данных в ${nameTable}: ${addError}` };
+        }
+      }
     } catch (error) {
       return { status: false, msg: `Ошибка: ${error}` };
     }
@@ -204,38 +208,52 @@ export class IndexedDBDriver {
       await this.ensureTableExists(nameTable);
       const store = this.getStore(nameTable, "readwrite");
 
-      const id = (where as any).id;
-      if (!id) {
-        return { status: false, msg: "Для IndexedDB необходимо указать ID в where" };
+      if (!where || Object.keys(where).length === 0) {
+        return { status: false, msg: "Для обновления необходимо указать условия WHERE" };
       }
 
       return new Promise((resolve) => {
-        const getRequest = store.get(id);
+        const getRequest = store.getAll();
 
         getRequest.onsuccess = () => {
-          const existing = getRequest.result;
-          if (!existing) {
-            resolve({ status: false, msg: "Запись не найдена" });
+          const results = getRequest.result;
+
+          const recordsToUpdate = results.filter((item) => {
+            return Object.entries(where).every(([key, value]) => item[key] === value);
+          });
+
+          if (recordsToUpdate.length === 0) {
+            resolve({ status: false, msg: "Записи для обновления не найдены" });
             return;
           }
 
-          const updatedRecord = {
-            ...existing,
-            ...payload,
-            updateAt: new Date().toISOString(),
-          };
+          const updatePromises = recordsToUpdate.map((record) => {
+            return new Promise((resolveUpdate) => {
+              const updatedRecord = {
+                ...record,
+                ...payload,
+                updateAt: new Date().toISOString(),
+              };
 
-          const putRequest = store.put(updatedRecord);
-          putRequest.onsuccess = () => {
-            resolve({ status: true, msg: `Данные обновлены в ${nameTable}` });
-          };
-          putRequest.onerror = () => {
-            resolve({ status: false, msg: `Ошибка обновления данных в ${nameTable}` });
-          };
+              const storageKey = record._key;
+              const putRequest = store.put(updatedRecord, storageKey);
+
+              putRequest.onsuccess = () => resolveUpdate(true);
+              putRequest.onerror = () => resolveUpdate(false);
+            });
+          });
+
+          Promise.all(updatePromises).then((results) => {
+            const successCount = results.filter(Boolean).length;
+            resolve({
+              status: true,
+              msg: `Обновлено ${successCount} из ${recordsToUpdate.length} записей`,
+            });
+          });
         };
 
         getRequest.onerror = () => {
-          resolve({ status: false, msg: `Ошибка поиска записи в ${nameTable}` });
+          resolve({ status: false, msg: "Ошибка поиска записей для обновления" });
         };
       });
     } catch (error) {
@@ -247,27 +265,49 @@ export class IndexedDBDriver {
     try {
       await this.ensureTableExists(nameTable);
       const store = this.getStore(nameTable);
-
+      const condition = "AND";
       return new Promise((resolve) => {
         const request = store.getAll();
-        const values: any[] = [];
 
         request.onsuccess = () => {
           let results = request.result;
 
-          if (params?.where) {
-            results = results.filter((item) => {
-              return Object.entries(params.where!).every(([key, value]) => item[key] === value);
-            });
+          if (params?.whereKey && "_key" in params.whereKey) {
+            const storageKeys = params.whereKey._key;
+            results = results.filter((item) => storageKeys.includes(item._key));
+
+            const { _key, ...otherWhereKey } = params.whereKey;
+            if (Object.keys(otherWhereKey).length > 0) {
+              results = this.applyWhereKeyFilter(results, otherWhereKey, condition);
+            }
+          } else {
+            if (params?.where) {
+              results = this.applyWhereFilter(results, params.where, condition);
+            }
+
+            if (params?.whereKey) {
+              results = this.applyWhereKeyFilter(results, params.whereKey, condition);
+            }
           }
 
-          values.push(...results);
+          if (params?.ignoreWhere) {
+            results = this.applyIgnoreWhereFilter(results, params.ignoreWhere, condition);
+          }
+          const cleanValues = results.map(({ _key, ...cleanData }) => cleanData);
 
-          resolve({
-            status: true,
-            values: values.length ? values : [],
-            msg: values.length ? "Данные найдены" : "Данных нет в таблице",
-          });
+          if (cleanValues.length === 0) {
+            resolve({
+              status: false,
+              values: [],
+              msg: "Данных нет в таблице",
+            });
+          } else {
+            resolve({
+              status: true,
+              values: cleanValues,
+              msg: "Данные найдены",
+            });
+          }
         };
 
         request.onerror = () => {
@@ -279,42 +319,106 @@ export class IndexedDBDriver {
     }
   };
 
+  private applyWhereFilter(data: any[], where: object, condition: "AND" | "OR" = "AND"): any[] {
+    return data.filter((item) => {
+      const conditions = Object.entries(where).map(([key, value]) => item[key] === value);
+      if (condition === "AND") {
+        return conditions.every(Boolean);
+      } else {
+        return conditions.some(Boolean);
+      }
+    });
+  }
+
+  private applyWhereKeyFilter(data: any[], whereKey: Record<string, string[]>, condition: "AND" | "OR" = "AND"): any[] {
+    return data.filter((item) => {
+      const conditions = Object.entries(whereKey).map(([key, values]) => values.includes(item[key]));
+
+      if (condition === "AND") {
+        return conditions.every(Boolean);
+      } else {
+        return conditions.some(Boolean);
+      }
+    });
+  }
+  private applyIgnoreWhereFilter(data: any[], ignoreWhere: Record<string, string[]>, condition: "AND" | "OR" = "AND"): any[] {
+    return data.filter((item) => {
+      const conditions = Object.entries(ignoreWhere).map(([key, values]) => !values.includes(item[key]));
+
+      if (condition === "AND") {
+        return conditions.every(Boolean);
+      } else {
+        return conditions.some(Boolean);
+      }
+    });
+  }
   removeData: StorageDriverProps["removeData"] = async (nameTable, params) => {
     try {
       await this.ensureTableExists(nameTable);
       const store = this.getStore(nameTable, "readwrite");
 
-      if (params?.where && (params.where as any).id) {
+      // Вспомогательная функция для фильтрации с учетом ignoreWhere
+      const applyFilters = (results: any[]) => {
+        let filtered = results;
+
+        // Применяем where фильтр
+        if (params?.where && Object.keys(params.where).length > 0) {
+          filtered = filtered.filter((item) => {
+            return Object.entries(params.where!).every(([key, value]) => item[key] === value);
+          });
+        }
+
+        // Применяем whereKey фильтр
+        if (params?.whereKey && Object.keys(params.whereKey).length > 0) {
+          filtered = filtered.filter((item) => {
+            return Object.entries(params.whereKey!).every(([key, values]) => values.includes(item[key]));
+          });
+        }
+
+       
+        if (params?.ignoreWhere && Object.keys(params.ignoreWhere).length > 0) {
+          filtered = filtered.filter((item) => {
+            return Object.entries(params.ignoreWhere!).every(
+              ([key, values]) => !values.includes(item[key]) // Исключаем значения
+            );
+          });
+        }
+
+        return filtered;
+      };
+
+      // Удаление по _key через where (игнорируем ignoreWhere для точечного удаления)
+      if (params?.where?._key) {
         return new Promise((resolve) => {
-          const request = store.delete((params.where as any).id);
+          const request = store.delete(params.where!._key);
 
           request.onsuccess = () => {
-            resolve({ status: true, msg: "Данные удалены по ID" });
+            resolve({ status: true, msg: "Данные удалены по ключу" });
           };
 
           request.onerror = () => {
-            resolve({ status: false, msg: "Ошибка удаления данных по ID" });
+            resolve({ status: false, msg: "Ошибка удаления данных по ключу" });
           };
         });
-      } else if (params?.where && Object.keys(params.where).length > 0) {
+      }
+
+      // Удаление по комбинированным условиям (where, whereKey, ignoreWhere)
+      if (params && (params.where || params.whereKey || params.ignoreWhere)) {
         return new Promise((resolve) => {
           const getRequest = store.getAll();
 
           getRequest.onsuccess = () => {
             const results = getRequest.result;
-            const recordsToDelete = results.filter((item) => {
-              return Object.entries(params.where!).every(([key, value]) => item[key] === value);
-            });
+            const recordsToDelete = applyFilters(results);
 
             if (recordsToDelete.length === 0) {
               resolve({ status: false, msg: "Записи для удаления не найдены" });
               return;
             }
 
-            // Удаляем все найденные записи
             const deletePromises = recordsToDelete.map((record) => {
               return new Promise((resolveDelete) => {
-                const deleteRequest = store.delete(record.id);
+                const deleteRequest = store.delete(record._key);
                 deleteRequest.onsuccess = () => resolveDelete(true);
                 deleteRequest.onerror = () => resolveDelete(false);
               });
@@ -333,19 +437,20 @@ export class IndexedDBDriver {
             resolve({ status: false, msg: "Ошибка поиска записей для удаления" });
           };
         });
-      } else {
-        return new Promise((resolve) => {
-          const request = store.clear();
-
-          request.onsuccess = () => {
-            resolve({ status: true, msg: `Все данные из ${nameTable} удалены` });
-          };
-
-          request.onerror = () => {
-            resolve({ status: false, msg: `Ошибка очистки ${nameTable}` });
-          };
-        });
       }
+
+      // Очистка всей таблицы (если нет условий)
+      return new Promise((resolve) => {
+        const request = store.clear();
+
+        request.onsuccess = () => {
+          resolve({ status: true, msg: `Все данные из ${nameTable} удалены` });
+        };
+
+        request.onerror = () => {
+          resolve({ status: false, msg: `Ошибка очистки ${nameTable}` });
+        };
+      });
     } catch (error) {
       return { status: false, msg: `Ошибка: ${error}` };
     }
