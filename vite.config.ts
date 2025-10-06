@@ -11,7 +11,7 @@ import path from "path";
 import fs from 'fs';
 
 const fullNameComponent = packageJson.name;
-const entryPathLib = "src/lib";
+const entryPathLib = "src/libs";
 
 
 // const excludeFiles = ['**/*.stories.js'];
@@ -27,44 +27,44 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [
-    react(),
     dts({ include: entryPathLib }),
     libInjectCss()
   ],
+  base: './',
   resolve: {
     alias: {
-      [`@lib`]: resolve(__dirname, `./src/lib/index`),
+      [`@libs`]: resolve(__dirname, `./` + entryPathLib ),
     },
   },
-  server: {
-    open: true,
-  },
+  server: { open: true },
   css: {
-    modules: {
-      localsConvention: 'camelCase'
-    },
+    modules: { localsConvention: 'camelCase' },
   },
   build: {
     copyPublicDir: false,
     cssCodeSplit: false,
     lib: {
-      entry: resolve(__dirname, entryPathLib),
+       entry: {
+        // index: entryPathLib + '/index.ts',
+        database: entryPathLib +'/Database/index.ts',
+        mobile: entryPathLib +'/CordovaAppControl/index.ts',
+      },
       formats: ["es"],
       name: fullNameComponent,
+
     },
     rollupOptions: {
-      //В пакет не входит external. Пользователь сам это ставит
-      external: ['react', 'react-dom', 'react/jsx-runtime'],
-      // external: [
-      //   "react/jsx-runtime",
-      //   // ...Object.keys(packageJson.dependencies),
-      //   // ...Object.keys(packageJson.devDependencies),
-      // ], 
-      input: Object.fromEntries(
-        glob
-          .sync(entryPathLib + "/**/*.{ts,tsx}")
-          .map((file) => [relative(entryPathLib, file.slice(0, file.length - extname(file).length)), fileURLToPath(new URL(file, import.meta.url))])
-      ),
+       external: [
+        "react/jsx-runtime",
+        /^@mui\/.*/,
+        /^@emotion\/.*/,
+        ...Object.keys(packageJson.peerDependencies)
+      ],
+      // input: Object.fromEntries(
+      //   glob
+      //     .sync(entryPathLib + "/**/*.{ts,tsx}")
+      //     .map((file) => [relative(entryPathLib, file.slice(0, file.length - extname(file).length)), fileURLToPath(new URL(file, import.meta.url))])
+      // ),
       // input: {
       //   index: resolve(__dirname, entryPathLib, 'index.ts'),
       //   // component1: resolve(__dirname, entryPathLib, 'components/Component1.ts'), // Other components
@@ -72,15 +72,15 @@ export default defineConfig({
       output: {
         // inlineDynamicImports: false,
        
-        assetFileNames: ({originalFileName, name}) => {
-          if(originalFileName){
-            // console.log(originalFileName);
-            const itemsPath = originalFileName.replace('src/lib/', '').split('/');
-            const currentPath =  itemsPath.slice(0, itemsPath.length - 1).join('/');
-            return `${currentPath}/${name}`;
-          }
-          return "";
-        },
+        // assetFileNames: ({originalFileName, name}) => {
+        //   if(originalFileName){
+        //     // console.log(originalFileName);
+        //     const itemsPath = originalFileName.replace('src/lib/', '').split('/');
+        //     const currentPath =  itemsPath.slice(0, itemsPath.length - 1).join('/');
+        //     return `${currentPath}/${name}`;
+        //   }
+        //   return "";
+        // },
         entryFileNames: "[name].js",
         globals: {
           react: 'React',

@@ -4,9 +4,9 @@
     "noUnusedLocals": false,
     // "noUnusedParameters": false,
     "paths": {
-      "@lib": ["src/lib/index.ts"]
+      "@libs/*": ["src/libs/*"]
     },
   },
  
   "exclude": ["node_modules", "dist"]
-}
+} 

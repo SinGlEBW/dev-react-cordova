@@ -2,7 +2,9 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from './App.tsx'
 import './index.css'
-import { CordovaAppControl, ControlHeightBoxMobile } from '@lib'
+
+
+
 
 const startApp = () => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -23,23 +25,23 @@ if (window.cordova) {
     //   // }
     //   // store.dispatch(setKeyboardInfo(data));
     // });
-    CordovaAppControl.dynamicMetaContentProperty();
-    CordovaAppControl.initFullScreen({
-      isFullScreen: true, 
-      isPaddingBottomAndroid: true,
-      isPaddingBottomIos: true,
-      onWatchOpenKeyboard: (data) => {
+    // CordovaAppControl.dynamicMetaContentProperty();
+    // CordovaAppControl.initFullScreen({
+    //   isFullScreen: true, 
+    //   isPaddingBottomAndroid: true,
+    //   isPaddingBottomIos: true,
+    //   onWatchOpenKeyboard: (data) => {
         
-      },
-      onHeightBars: (data) => {
-        console.log('onHeightBars (data)', data);//{heightStatus: number, heightNav: number }
-        // store.dispatch(setMobileHeightBars({
-        //   heightStatusBar: heightStatus,
-        //   heightNavBar: heightNav
-        // }));
-      },
+    //   },
+    //   onHeightBars: (data) => {
+    //     console.log('onHeightBars (data)', data);//{heightStatus: number, heightNav: number }
+    //     // store.dispatch(setMobileHeightBars({
+    //     //   heightStatusBar: heightStatus,
+    //     //   heightNavBar: heightNav
+    //     // }));
+    //   },
     
-    });
+    // });
   }, false);
 } else {
   startApp();

@@ -12,6 +12,6 @@ export class CordovaConfig{
     return window?.device?.platform
   }
   static getPlugins () {
-    return window?.cordova?.plugins ? window?.cordova?.plugins : {}
+    return window?.cordova?.plugins ? window?.cordova?.plugins : {} as CordovaPlugins
   }
 }
