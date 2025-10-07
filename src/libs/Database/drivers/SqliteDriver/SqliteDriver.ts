@@ -1,6 +1,6 @@
 
 import { getStatusAndDataJson } from "../helpers";
-import { type DriverOptions, type StorageDriverProps } from "../types";
+import { type BaseSqliteOptions, type DriverOptions, type StorageDriverProps } from "../types";
 import { checkTableSqlite, dropTableSqlite, openDbSqlite, querySqlite } from './base';
 import { getDataSqlite, } from './getAndRemote/getDataSqlite';
 import { removeDataSqlite } from './getAndRemote/removeDataSqlite';
@@ -36,6 +36,14 @@ export class SqliteDriver{
       setDataSqlite(this.openDB(), nameTable, key, payload, options).then(resolve).catch(reject);
     });
   };
+
+  async setList (nameTable:string, list: Array<{[key in string]: any} & {id: string | number}>, options: BaseSqliteOptions) {
+    for (let i = 0; i < list.length; i++) {
+      const item = list[i];
+      this.setData(nameTable, item.id, item, options);
+    }
+    return { status: true, msg: `Список в ${nameTable} добавлен` };
+  }
 
   updateData: StorageDriverProps["updateData"] = (nameTable, payload, { where }) => {
     return new Promise((resolve, reject) => {

@@ -7,7 +7,7 @@ export interface StorageProps extends StorageDriverProps{
   switchDriver(driverName: DriverType): boolean;
   getCurrentDriver(): DriverType;
 }
-export class Storage {
+export class Storage<T extends string> {
   private drivers: Map<DriverType, StorageDriverProps> = new Map();
   private currentDriver: StorageDriverProps;
   private options: StorageOptions;
@@ -62,27 +62,27 @@ export class Storage {
   }
 
   // Основные методы (делегируются текущему драйверу)
-  async getData(nameTable: string, params?: Params, isParse?: boolean): Promise<ResultGetDataSqlite> {
+  async getData(nameTable: T, params?: Params, isParse?: boolean): Promise<ResultGetDataSqlite> {
     return this.currentDriver.getData(nameTable, params, isParse);
   }
 
-  async setData(nameTable: string, key: number | string, payload: object, options?: BaseSqliteOptions): Promise<BaseReturnProps> {
+  async setData(nameTable: T, key: number | string, payload: object, options?: BaseSqliteOptions): Promise<BaseReturnProps> {
     return this.currentDriver.setData(nameTable, key, payload, options);
   }
 
-  async updateData(nameTable: string, payload: object, where: UpdateWhere): Promise<BaseReturnProps> {
+  async updateData(nameTable: T, payload: object, where: UpdateWhere): Promise<BaseReturnProps> {
     return this.currentDriver.updateData(nameTable, payload, where);
   }
 
-  async removeData(nameTable: string, params?: Params): Promise<BaseReturnProps> {
+  async removeData(nameTable: T, params?: Params): Promise<BaseReturnProps> {
     return this.currentDriver.removeData(nameTable, params);
   }
 
-  async checkTable(nameTable: string): Promise<BaseReturnProps> {
+  async checkTable(nameTable: T): Promise<BaseReturnProps> {
     return this.currentDriver.checkTable(nameTable);
   }
 
-  async dropTable(nameTable: string): Promise<BaseReturnProps> {
+  async dropTable(nameTable: T): Promise<BaseReturnProps> {
     return this.currentDriver.dropTable(nameTable);
   }
 

@@ -77,6 +77,7 @@ interface StorageProps {
   switchDriver(nameDriver): void;
   getCurrentDriver(): DriverType;
   isSupported(): boolean;
+  setList(nameTable, list:Array<{[key in string]: string} & {id: string | number}>, options?:BaseSqliteOptions):{msg: string, status: boolean}
 }
 ```
 #### Examples
