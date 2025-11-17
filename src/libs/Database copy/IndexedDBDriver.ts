@@ -293,7 +293,7 @@ export class IndexedDBDriver {
           if (params?.ignoreWhere) {
             results = this.applyIgnoreWhereFilter(results, params.ignoreWhere, condition);
           }
-          // const cleanValues = results.map(({ _key, ...cleanData }) => cleanData);
+          const cleanValues = results.map(({ _key, ...cleanData }) => cleanData);
 
           if (results.length === 0) {
             resolve({
@@ -304,7 +304,7 @@ export class IndexedDBDriver {
           } else {
             resolve({
               status: true,
-              values: results,
+              values: cleanValues,
               msg: "Данные найдены",
             });
           }
