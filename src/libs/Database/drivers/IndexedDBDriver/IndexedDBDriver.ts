@@ -263,6 +263,14 @@ export class IndexedDBDriver {
 
   getData: StorageDriverProps["getData"] = async (nameTable, params, isParse = false) => {
     try {
+      const infoCheckTable = await this.checkTable(nameTable);
+      if (!infoCheckTable.status) {
+        return {
+          ...infoCheckTable,
+          values: [],
+        };
+      }
+
       await this.ensureTableExists(nameTable);
       const store = this.getStore(nameTable);
       const condition = "AND";
@@ -375,7 +383,6 @@ export class IndexedDBDriver {
           });
         }
 
-       
         if (params?.ignoreWhere && Object.keys(params.ignoreWhere).length > 0) {
           filtered = filtered.filter((item) => {
             return Object.entries(params.ignoreWhere!).every(
