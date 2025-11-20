@@ -1,3 +1,4 @@
+import { getLocalDateTime } from '@libs/Database/drivers/helpers';
 import { StorageDriverProps } from "./drivers/types";
 
 export class IndexedDBDriver {
@@ -168,8 +169,8 @@ export class IndexedDBDriver {
         _key: key,
         ...payload,
         ...(options?.isCreateDate !== false && {
-          createdAt: new Date().toISOString(),
-          updateAt: new Date().toISOString(),
+          createdAt: getLocalDateTime(),
+          updateAt: getLocalDateTime(),
         }),
       };
 
@@ -232,7 +233,7 @@ export class IndexedDBDriver {
               const updatedRecord = {
                 ...record,
                 ...payload,
-                updateAt: new Date().toISOString(),
+                updateAt: getLocalDateTime(),
               };
 
               const storageKey = record._key;

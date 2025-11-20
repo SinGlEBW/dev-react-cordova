@@ -30,3 +30,7 @@
 ### Edit
 - Добавлена проверка таблицы при обращении getData в IndexedDBDriver
 
+## [1.1.17] - 2025-11-19
+### Edit
+- IndexedDBDriver: Исправлен формат времени createdAt & updateAt
+
