@@ -124,7 +124,7 @@ export class IndexedDBDriver {
       }
 
       return new Promise((resolve) => {
-        debugger;
+        
         const currentVersion = this.db?.version || this.version;
         const newVersion = currentVersion + 1;
         this.closeDB();
