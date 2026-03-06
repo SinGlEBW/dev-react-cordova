@@ -1,24 +1,80 @@
-
 import { getStatusAndDataJson } from "../helpers";
 import { type BaseSqliteOptions, type DriverOptions, type StorageDriverProps } from "../types";
-import { checkTableSqlite, dropTableSqlite, openDbSqlite, querySqlite } from './base';
-import { getDataSqlite, } from './getAndRemote/getDataSqlite';
-import { removeDataSqlite } from './getAndRemote/removeDataSqlite';
-import { setDataSqlite } from './set/setDataSqlite';
-import { updateDataSqlite } from './update/updateDataSqlite';
+import { checkTableSqlite, dropTableSqlite, openDbSqlite, querySqlite } from "./base";
+import { getDataSqlite } from "./getAndRemote/getDataSqlite";
+import { removeDataSqlite } from "./getAndRemote/removeDataSqlite";
+import { setDataSqlite } from "./set/setDataSqlite";
+import { updateDataSqlite } from "./update/updateDataSqlite";
 
-export class SqliteDriver{
+export class SqliteDriver {
   private isCreateDate = true;
-  private dbName: string = '';
+  private dbName: string = "";
   private version: number = 1;
- 
+
   constructor(options: DriverOptions) {
-    
     this.dbName = options?.dbName || "app-database";
   }
-  openDB: StorageDriverProps["openDB"] = () => openDbSqlite();
+  //Добавить dropDB
+  openDB: StorageDriverProps["openDB"] = () => openDbSqlite(this.dbName);
   closeDB = () => (window.db ? window.db.close() : console.log("Не возможно закрыть базу"));
 
+
+  deleteDatabase: StorageDriverProps["deleteDatabase"] = async () => {
+    const dbName = this.dbName
+    try {
+      // Закрываем текущее соединение если оно открыто
+      this.closeDB();
+
+      return new Promise((resolve, reject) => {
+        // Удаляем базу данных через Cordova SQLite plugin
+        window.sqlitePlugin.deleteDatabase(
+          {
+            name: dbName,
+            location: "default",
+          },
+          // Success callback
+          () => {
+            console.log(`✅ База данных SQLite "${dbName}" успешно удалена`);
+
+            // Очищаем глобальную ссылку если это текущая база
+            if (window.db && window.db.openDBs && window.db.openDBs[dbName]) {
+              delete window.db.openDBs[dbName];
+              if (Object.keys(window.db.openDBs).length === 0) {
+                // window.db = null;
+              }
+            }
+
+            resolve({
+              status: true,
+              msg: `База данных "${dbName}" удалена`,
+            });
+          },
+          // Error callback
+          (error: any) => {
+            console.error(`❌ Ошибка удаления базы SQLite "${dbName}":`, error);
+
+            // Некоторые специфичные ошибки SQLite
+            let errorMessage = error?.message || "неизвестная ошибка";
+
+            // Обработка специфичных ошибок
+            if (error?.code === 1 && errorMessage.includes("no such table")) {
+              errorMessage = "База данных не существует";
+            }
+
+            resolve({
+              status: false,
+              msg: `Ошибка удаления базы данных: ${errorMessage}`,
+            });
+          },
+        );
+      });
+    } catch (error) {
+      return {
+        status: false,
+        msg: `Ошибка: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  };
   query: StorageDriverProps["query"] = (sql) => {
     return new Promise((resolve, reject) => {
       querySqlite(this.openDB(), sql).then(resolve).catch(reject);
@@ -37,7 +93,7 @@ export class SqliteDriver{
     });
   };
 
-  async setList (nameTable:string, list: Array<{[key in string]: any} & {id: string | number}>, options: BaseSqliteOptions) {
+  async setList(nameTable: string, list: Array<{ [key in string]: any } & { id: string | number }>, options: BaseSqliteOptions) {
     for (let i = 0; i < list.length; i++) {
       const item = list[i];
       this.setData(nameTable, item.id, item, options);
@@ -107,5 +163,3 @@ export class SqliteDriver{
     return !!(window.cordova && window.sqlitePlugin);
   }
 }
-
-

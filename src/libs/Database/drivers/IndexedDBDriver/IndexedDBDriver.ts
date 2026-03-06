@@ -1,4 +1,4 @@
-import { getLocalDateTime } from '../helpers';
+import { getLocalDateTime } from "../helpers";
 import { StorageDriverProps } from "../types";
 
 export class IndexedDBDriver {
@@ -86,6 +86,47 @@ export class IndexedDBDriver {
     }
   };
 
+  deleteDatabase: StorageDriverProps["deleteDatabase"] = async () => {
+    const dbName = this.dbName;
+    try {
+      // Закрываем текущее соединение если оно открыто
+      this.closeDB();
+
+      return new Promise((resolve) => {
+        const request = indexedDB.deleteDatabase(dbName);
+
+        request.onsuccess = () => {
+          console.log(`✅ База данных "${dbName}" успешно удалена`);
+          resolve({
+            status: true,
+            msg: `База данных "${dbName}" удалена`,
+          });
+        };
+
+        request.onerror = (event) => {
+          const error = (event.target as IDBOpenDBRequest).error;
+          console.error(`❌ Ошибка удаления базы "${dbName}":`, error);
+          resolve({
+            status: false,
+            msg: `Ошибка удаления базы данных: ${error?.message || "неизвестная ошибка"}`,
+          });
+        };
+
+        request.onblocked = () => {
+          console.warn(`⚠️ Удаление базы "${dbName}" заблокировано. Есть активные соединения`);
+          resolve({
+            status: false,
+            msg: `Удаление заблокировано. Закройте другие вкладки с этим приложением`,
+          });
+        };
+      });
+    } catch (error) {
+      return {
+        status: false,
+        msg: `Ошибка: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  };
   private getStore(nameTable: string, mode: IDBTransactionMode = "readonly") {
     if (!this.db) throw new Error("База данных не открыта");
     if (!this.db.objectStoreNames.contains(nameTable)) {
@@ -124,7 +165,6 @@ export class IndexedDBDriver {
       }
 
       return new Promise((resolve) => {
-        
         const currentVersion = this.db?.version || this.version;
         const newVersion = currentVersion + 1;
         this.closeDB();
@@ -387,7 +427,7 @@ export class IndexedDBDriver {
         if (params?.ignoreWhere && Object.keys(params.ignoreWhere).length > 0) {
           filtered = filtered.filter((item) => {
             return Object.entries(params.ignoreWhere!).every(
-              ([key, values]) => !values.includes(item[key]) // Исключаем значения
+              ([key, values]) => !values.includes(item[key]), // Исключаем значения
             );
           });
         }

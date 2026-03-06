@@ -98,4 +98,36 @@ export class Storage<T extends string> {
   closeDB(): void {
     this.currentDriver.closeDB();
   }
+
+  async deleteDatabase(dbName?: string): Promise<BaseReturnProps> {
+    try {
+      this.closeDB();
+
+      const currentDriverName = this.getCurrentDriver();
+      const driver = this.drivers.get(currentDriverName);
+      
+      if (!driver) {
+        return {
+          status: false,
+          msg: `Драйвер ${currentDriverName} не найден`
+        };
+      }
+
+      if (!driver.deleteDatabase) {
+        return {
+          status: false,
+          msg: `Драйвер ${currentDriverName} не поддерживает удаление базы данных`
+        };
+      }
+
+      const result = await driver.deleteDatabase();
+      return result;
+
+    } catch (error) {
+      return {
+        status: false,
+        msg: `Ошибка при удалении базы данных: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
 }

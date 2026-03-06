@@ -36,6 +36,7 @@ export interface StorageDriverProps{
   removeData(nameTable: string, params?: Params): Promise<BaseReturnProps>;
   checkTable(nameTable: string): Promise<BaseReturnProps>;
   query(sql: string): Promise<BaseReturnProps>;
+  deleteDatabase(): Promise<BaseReturnProps>;
   openDB(): any;
   closeDB(): void;
   isSupported(): boolean;

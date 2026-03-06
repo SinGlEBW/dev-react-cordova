@@ -34,3 +34,7 @@
 ### Edit
 - IndexedDBDriver: Исправлен формат времени createdAt & updateAt
 
+## [1.1.18] - 2026-03-06
+### Added
+- Storage: Добавлен метод deleteDatabase
+
