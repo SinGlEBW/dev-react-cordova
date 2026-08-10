@@ -14,33 +14,13 @@ interface CordovaKeyboardPropsPrivate {
 
 
 export class CordovaKeyboard extends CordovaConfig {
-  private fullHeightKeyboard = 0;
   private currentHeight = 0;
-  
   private rootEl = document.body;
-  /*
-   INFO: !!!Запомнить!!!
-    что бы взять и передать данные нужно использовать стрелочную функцию. Иначе теряется контекст. 
-    на constructor это не распространяется
-  */
-  getStaticHeightKeyboard = () => {
-    return this.fullHeightKeyboard
-  }
+
   getDymanicHeightKeyboard = () => {
     return this.currentHeight
   }
-  private setKeyboardHeight({elRoot, isShow, keyboardHeight}:CordovaKeyboardPropsPrivate['setKeyboardHeight']) {
-    let height = "100%";
-    this.currentHeight = keyboardHeight;
-    
-    if (isShow) {
-      this.fullHeightKeyboard = keyboardHeight;
-      height = `calc(100% - ${keyboardHeight}px)`;
-    }
-    
-    elRoot.style.height = height;
-  }
-  
+
   private getData?: CordovaKeyboardProps['getData'] | null = null
   
   onWatch(getData?: CordovaKeyboardProps['getData'] | null){ this.getData = getData }
@@ -54,13 +34,9 @@ export class CordovaKeyboard extends CordovaConfig {
   }
 
   watchStart() {
-    const elRoot = this.getRootElement();
-
     if (CordovaKeyboard.isAndroid()) {
       const { AndroidBars } = CordovaKeyboard.getPlugins();
       const cb = ({ isShow, height }: {isShow: boolean, height: number}) => {
-          console.log('AndroidBars.on (height)', height);
-          this.setKeyboardHeight({ elRoot, isShow, keyboardHeight: height })
           this.getData && typeof this.getData === "function" && this.getData({ isShow, height });
         };
         if(AndroidBars){
@@ -79,7 +55,6 @@ export class CordovaKeyboard extends CordovaConfig {
 
       const cb = ({keyboardHeight}: Pick<CordovaKeyboardPropsPrivate['setKeyboardHeight'], 'keyboardHeight'>) => {
           const isShow = !!keyboardHeight;
-          this.setKeyboardHeight({ elRoot,isShow, keyboardHeight })
           this.getData && typeof this.getData === "function" && this.getData({ isShow, height: keyboardHeight });
         };
         cb && window.addEventListener("keyboardHeightWillChange", cb as any);

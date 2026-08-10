@@ -43,39 +43,14 @@ export class CordovaAppControl extends CordovaConfig {
   private static Keyboard = new CordovaKeyboard();
   private static isCheckEventOrientationMobileForAndroidNav = false;
  
-  // static keyboard = {
-  //   //Запуск в initFullScreen
-  //   onWatch(cb: Parameters<typeof CordovaAppControl.Keyboard.onWatch>[0], isAutoRootElement = true) {
-  //     const on: Parameters<typeof CordovaAppControl.Keyboard.onWatch>[0] = (data) => {
-  //       CordovaAppControl.isShowKeyboard = data.isShow;
 
-  //       const bottomSize = CordovaAppControl.getBottomSize({
-  //         currentHeightKeyboard: data.height,
-  //         heightNav: CordovaAppControl.heightNav,
-  //         isPortrait: CordovaAppControl.isPortrait,
-  //       });
-
-       
-  //       CordovaAppControl.setAutoBottomSize({ bottomSize });//Для компонента
-  //       isAutoRootElement && CordovaAppControl.setHeightInRootElement(bottomSize);//автоматом сразу на элемент
-  //       cb && cb(data);
-  //     };
-  //     CordovaAppControl.Keyboard.onWatch(on);
-  //   },
-  // };
-  
   static setRootElement = CordovaAppControl.Keyboard.setRootElement
 
   private static orientationMobileControl({
-    isPaddingBottom,
-    isPaddingTop,
-    heightStatus,
     heightNav,
     isAutoSizeHeightRootElement,
   }: CordovaAppControlPropsPrivate["orientationMobileControl"]) {
-    // console.dir("orientationMobileControl");
     if (!CordovaAppControl.isCheckEventOrientationMobileForAndroidNav) {
-      // console.dir("создание orientationMobileControl");
       const cb = ({ isPortrait }: Pick<CordovaAppControlPropsPrivate["getBottomSize"], 'isPortrait'>) => {
         CordovaAppControl.isPortrait = isPortrait;
 
@@ -107,13 +82,7 @@ export class CordovaAppControl extends CordovaConfig {
 
     return bottomSize;
   }
-  // private static setAutomaticPaddingBottomFixElements(paddingBottom){
-  //   const items = document.body.children.length ?  [...document.body.children] : [];
-  //   const itemsPositionFixed = items.filter((item) => window.getComputedStyle(item).getPropertyValue('position') === 'fixed');
-  //   if(itemsPositionFixed.length){
-
-  //   }
-  // }
+ 
 
   private static setAutoBottomSize = ({ bottomSize }: {bottomSize: number}) => {};
   public static onGetAutoBottomSize(cb: typeof CordovaAppControl.setAutoBottomSize) {
@@ -183,14 +152,11 @@ export class CordovaAppControl extends CordovaConfig {
         return parseInt(getComputedStyle(body).getPropertyValue(prop));
       };
 
-      // console.log("isPaddingBottomIos", isPaddingBottomIos);
 
       if (isPaddingBottomIos || isPaddingTopIos) {
         const idTimeout = setTimeout(() => {
           const heightStatus = getCssValueByProperty(CSS_CONST_TOP);
           const heightNav = getCssValueByProperty(CSS_CONST_BOTTOM);
-          // console.log("heightStatus", heightStatus);
-          // console.log("heightNav", heightNav);
 
           CordovaAppControl.heightStatus = heightStatus;
           CordovaAppControl.heightNav = heightNav;
@@ -263,7 +229,6 @@ export class CordovaAppControl extends CordovaConfig {
 
   public static onOrientation(cb: ({ isPortrait }: Pick<CordovaAppControlPropsPrivate["getBottomSize"], 'isPortrait'>) => void) {
     const findCb = CordovaAppControl.listOrientation_cb.find((itemCb) => (itemCb as any)?.cbOrigin === cb);
-    // console.log("onOrientation(findCb)", findCb);
   
     if (!findCb) {
       const payload = {
