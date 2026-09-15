@@ -1,15 +1,18 @@
-import { CordovaConfig } from '../CordovaConfig';
+import { CordovaConfig } from './CordovaConfig';
 
 
-
+interface ItemColorKeys{
+  dark: string;
+  light: string;
+}
 export interface ColorsSystemBarsProps {
   setColorSystemBars: {
 
     isDarkIcon: boolean;
     isDarkAndroidNavIcon?:boolean
-    colors: {
-      color1: { dark: string; light: string };
-      color2?: { dark: string; light: string };
+    colors?: {
+      color1: ItemColorKeys;
+      color2?: ItemColorKeys;
     };
 
   };
@@ -19,15 +22,16 @@ export class ColorSystemBars extends CordovaConfig {
   static color1 = { dark: "", light: "" };
   static color2 = { dark: "", light: "" };
 
-  static setColorSystemBars = ({ isDarkIcon, isDarkAndroidNavIcon, colors }:ColorsSystemBarsProps['setColorSystemBars']) => {
- 
-    const { color1, color2 } = colors;
-    ColorSystemBars.color1 = color1;
-    if (color2 && "light" in color2 && "dark" in color2) {
-      ColorSystemBars.color2 = color2 as Required<ColorsSystemBarsProps["setColorSystemBars"]["colors"]>["color2"];
+  static setColorSystemBars = (payload:ColorsSystemBarsProps['setColorSystemBars']) => {
+    if(payload.colors){
+      const { color1, color2 } = payload.colors;
+      ColorSystemBars.color1 = color1;
+      if (color2 && "light" in color2 && "dark" in color2) {
+        ColorSystemBars.color2 = color2 as ItemColorKeys;
+      }
     }
 
-    ColorSystemBars.toggleDarkColor(isDarkIcon, isDarkAndroidNavIcon);
+    ColorSystemBars.toggleDarkColor(payload.isDarkIcon, payload.isDarkAndroidNavIcon);
   };
 
   static getColorByStatusTheme(isDarkTheme: boolean) {
@@ -42,12 +46,16 @@ export class ColorSystemBars extends CordovaConfig {
     if (ColorSystemBars.isAndroid()) {
       const { AndroidBars } = ColorSystemBars.getPlugins();
       if(AndroidBars){
-        if (hex2) {
-          AndroidBars.bgColorStatusBar(hex1);
-          AndroidBars.bgColorNavBar(hex2);
-        } else {
-          AndroidBars.bgColorAll(hex1);
-        }
+        const timeout = setTimeout(() => {
+          if (hex2) {
+            AndroidBars.bgColorStatusBar(hex1);
+            AndroidBars.bgColorNavBar(hex2);
+          } else {
+            AndroidBars.bgColorAll(hex1);
+          }
+          clearTimeout(timeout);
+        }, 10)
+     
       }else{
         console.error("Не установлен плагин cordova-plugin-android-bars")
       }

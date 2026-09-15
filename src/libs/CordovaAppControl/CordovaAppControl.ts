@@ -1,179 +1,194 @@
+import { ControlState, EventSubscribers } from "dev-classes";
+import { ColorsSystemBarsProps, ColorSystemBars } from "./classes/ColorSystemBars";
 import { CordovaConfig } from "./classes/CordovaConfig";
-import { CordovaKeyboard, CordovaKeyboardProps } from "./classes/CordovaKeyboard/CordovaKeyboard";
-import { ColorsSystemBarsProps, ColorSystemBars } from "./classes/ColorSystemBars/ColorSystemBars";
-import { ControlMobileAutoHeight } from "./components/ControlMobilePadding/store";
+import { CordovaKeyboard, CordovaKeyboard_Events } from "./classes/CordovaKeyboard";
+import { autoSizesBoxActions } from './components/ControlMobilePadding/store';
 
+
+interface CordovaAppControl_Events {
+  watchingResize(payload: PayloadWatchResize_P): void;
+  heightBars(payload: Record<"heightStatus" | "heightNav", number>): void;
+}
 
 export interface CordovaAppControlProps {
   initFullScreen: {
-    onHeightBars?(d: Record<"heightStatus" | "heightNav", number>): void;
-    onGetAutoBottomSize?(d: { bottomSize: number }): void;
-    onWatchOpenKeyboard?: CordovaKeyboardProps['getData'];
-
-    isPaddingTopAndroid?: boolean;
-    isPaddingBottomAndroid?: boolean;
-    isPaddingBottomIos?: boolean;
-    isPaddingTopIos?: boolean;
-    isAutoSizeHeightRootElement?: boolean;
+    onHeightBars?: CordovaAppControl_Events["heightBars"];
+    onWatchOpenKeyboard?: CordovaKeyboard_Events["watch"];
+    onWatchingResize?: CordovaAppControl_Events["watchingResize"];
     isFullScreen: boolean;
+    isAddedPaddingByKeyboard?: boolean;
   };
 }
-interface CordovaAppControlPropsPrivate {
-  orientationMobileControl: {
-    isPaddingBottom: boolean;
-    isPaddingTop: boolean;
-    heightStatus: number;
-    heightNav: number;
-    isAutoSizeHeightRootElement: boolean;
-  };
-  getBottomSize: {
-    isPortrait: boolean;
-    currentHeightKeyboard: number;
-    heightNav: number;
-  };
+
+const defaultState = {
+  isAddedPaddingByKeyboard: false,
+  heightStatus: 0,
+  heightNav: 0,
+  keyboardData: { isShow: false, height: 0 },
+};
+
+interface SizesDisplay_P {
+  width: number;
+  height: number;
+  isPortrait: boolean;
+}
+
+interface KeyboardData_P {
+  isShow: boolean;
+  height: number;
+}
+
+interface PayloadWatchResize_P {
+  sizesDisplay: SizesDisplay_P;
+  keyboardData: KeyboardData_P;
+  autoBottomSize: number;
 }
 
 export class CordovaAppControl extends CordovaConfig {
-  private static isPortrait = false;
-  private static heightStatus = 0;
-  private static heightNav = 0;
-  private static isShowKeyboard = false;
-
-  private static listOrientation_cb: any[] = [];
-  private static Keyboard = new CordovaKeyboard();
-  private static isCheckEventOrientationMobileForAndroidNav = false;
- 
-
-  static setRootElement = CordovaAppControl.Keyboard.setRootElement
-
-  private static orientationMobileControl({
-    heightNav,
-    isAutoSizeHeightRootElement,
-  }: CordovaAppControlPropsPrivate["orientationMobileControl"]) {
-    if (!CordovaAppControl.isCheckEventOrientationMobileForAndroidNav) {
-      const cb = ({ isPortrait }: Pick<CordovaAppControlPropsPrivate["getBottomSize"], 'isPortrait'>) => {
-        CordovaAppControl.isPortrait = isPortrait;
-
-        if (!CordovaAppControl.isShowKeyboard) {
-          /*
-            Если клавиатура запущена, то она отрабатывает при повороте. Только фиксировать 
-           */
-          const { getDymanicHeightKeyboard } = CordovaAppControl.Keyboard;
-          const currentHeightKeyboard = getDymanicHeightKeyboard();
-          const bottomSize = CordovaAppControl.getBottomSize({
-            currentHeightKeyboard,
-            heightNav,
-            isPortrait,
-          });
-
-          CordovaAppControl.setAutoBottomSize({ bottomSize });
-          isAutoSizeHeightRootElement && CordovaAppControl.setHeightInRootElement(bottomSize);//автоматом сразу на элемент
-        }
-      };
-
-      CordovaAppControl.onOrientation(cb);
-    }
+  private static LOG_RED(name, payload) {
+    console.log(`%c${name}`, "color: red;", payload);
   }
-  private static getBottomSize({ isPortrait, currentHeightKeyboard, heightNav }: CordovaAppControlPropsPrivate["getBottomSize"]) {
+  private static Keyboard = new CordovaKeyboard();
+  private static events = new EventSubscribers<CordovaAppControl_Events>(["watchingResize", "heightBars"]);
+  private static isInitEvent = false; //защита при разработке на react
+
+  private static controlState = new ControlState(defaultState);
+  private static getSizesDisplay = () => {
+    return {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      isPortrait: window.innerHeight / window.innerWidth > 1,
+    };
+  };
+
+  private static getBottomSize({ isPortrait, currentHeightKeyboard, heightNav }): number {
     let bottomSize = currentHeightKeyboard ? currentHeightKeyboard : heightNav;
     if (!isPortrait) {
       bottomSize = currentHeightKeyboard ? currentHeightKeyboard : 0;
     }
-
     return bottomSize;
   }
- 
 
-  private static setAutoBottomSize = ({ bottomSize }: {bottomSize: number}) => {};
-  public static onGetAutoBottomSize(cb: typeof CordovaAppControl.setAutoBottomSize) {
-    CordovaAppControl.setAutoBottomSize = cb;
-  }
+  private static sendPayloadInStore = ({ isAddedPaddingByKeyboard, heightNav, sizesDisplay, test }) => {
+    const { keyboardData } = this.controlState.getState();
 
-  public static initFullScreen = ({
-    isFullScreen,
-    isPaddingBottomAndroid = false,
-    isPaddingTopAndroid = false,
-    isPaddingBottomIos = false,
-    isPaddingTopIos = false,
-    isAutoSizeHeightRootElement = true,
-    onHeightBars,
-    onWatchOpenKeyboard
-  }: CordovaAppControlProps["initFullScreen"]) => {
-    CordovaAppControl.Keyboard.watchStart();
-
-    onWatchOpenKeyboard && CordovaAppControl.Keyboard.onWatch((data) => {
-      CordovaAppControl.isShowKeyboard = data.isShow;
-
-      const bottomSize = CordovaAppControl.getBottomSize({
-        currentHeightKeyboard: data.height,
-        heightNav: CordovaAppControl.heightNav,
-        isPortrait: CordovaAppControl.isPortrait,
-      });
-
-      CordovaAppControl.setAutoBottomSize({ bottomSize });//Для компонента
-      isAutoSizeHeightRootElement && CordovaAppControl.setHeightInRootElement(bottomSize);//автоматом сразу на элемент
-      onWatchOpenKeyboard(data)
+    const autoBottomSize = this.getBottomSize({
+      currentHeightKeyboard: isAddedPaddingByKeyboard ? (keyboardData.isShow ? keyboardData.height : 0) : 0,
+      heightNav: keyboardData.isShow ? 0 : heightNav,
+      isPortrait: sizesDisplay.isPortrait,
     });
 
+    const payload = {
+      sizesDisplay,
+      keyboardData,
+      autoBottomSize,
+    };
+    this.events.publish("watchingResize", payload);
+    autoSizesBoxActions.set({ autoBottomSize, sizesDisplay, keyboardData });
+    this.LOG_RED(`sendPayloadInStore ${test}`, payload);
+  };
 
+  private static sendHeightBars = ({ heightStatus, heightNav, isAddedPaddingByKeyboard, sizesDisplay }) => {
+    this.controlState.setState({ heightStatus, heightNav });
+    autoSizesBoxActions.setSizesBars({ heightStatus, heightNav });
+    this.events.publish("heightBars", { heightStatus, heightNav });
+    this.sendPayloadInStore({ heightNav, isAddedPaddingByKeyboard, sizesDisplay, test: "getHeightSystemBars" });
+  };
+
+  private static getHeightSystemBars = () => {
+    const CSS_CONST_TOP = "--safe-top";
+    const CSS_CONST_BOTTOM = "--safe-bottom";
+    const { body } = document;
+    body.style.setProperty(CSS_CONST_TOP, "env(safe-area-inset-top)");
+    body.style.setProperty(CSS_CONST_BOTTOM, "env(safe-area-inset-bottom)");
+
+    const getCssValueByProperty = (prop: string) => {
+      return parseInt(getComputedStyle(body).getPropertyValue(prop));
+    };
+    const heightStatus = getCssValueByProperty(CSS_CONST_TOP);
+    const heightNav = getCssValueByProperty(CSS_CONST_BOTTOM);
+
+    body.style.removeProperty(CSS_CONST_TOP);
+    body.style.removeProperty(CSS_CONST_BOTTOM);
+    return { heightStatus, heightNav };
+  };
+
+  public static initFullScreen = async ({
+    isFullScreen,
+    isAddedPaddingByKeyboard = false,
+    onHeightBars,
+    onWatchingResize,
+    onWatchOpenKeyboard,
+  }: CordovaAppControlProps["initFullScreen"]) => {
+    this.controlState.setState({ isAddedPaddingByKeyboard });
+    this.Keyboard.watchStart();
+    onWatchingResize && this.events.subscribe("watchingResize", onWatchingResize);
+    onHeightBars && this.events.subscribe("heightBars", onHeightBars);
+    const sizesDisplay = CordovaAppControl.getSizesDisplay();
+    //В зависимости от какой ориентации запустили приложение
+
+    if (!this.isInitEvent) {
+      this.isInitEvent = true;
+      const [minSize, maxSize] = [sizesDisplay.width, sizesDisplay.height].sort((a, b) => a - b);
+
+      const listener = async (ev) => {
+        const isPortrait = ev?.matches;
+        console.log("%cisPortrait", "color: #F07427;", isPortrait);
+
+        //INFO: нельзя тут вызывать CordovaAppControl.getSizesDisplay() т.к. на ios не верно
+        // будет вычислять из-за того что срабатывает раньше чем измениться window. Вычисляем сами.
+        const _sizesDisplay = {
+          isPortrait,
+          width: isPortrait ? minSize : maxSize,
+          height: isPortrait ? maxSize : minSize,
+        };
+        const { isAddedPaddingByKeyboard, heightNav } = this.controlState.getState();
+
+        // const { heightStatus, heightNav } = this.getHeightSystemBars();
+        // autoSizesBoxActions.set({ autoTopSize: heightStatus });
+        this.sendPayloadInStore({ heightNav, isAddedPaddingByKeyboard, sizesDisplay: _sizesDisplay, test: "orientation listener" });
+      };
+
+      const mediaQuery = window.matchMedia("(orientation: portrait)");
+
+      if (mediaQuery.addEventListener) {
+        mediaQuery.addEventListener("change", listener);
+      } else {
+        mediaQuery.addListener(listener);
+      }
+    }
 
     if (CordovaAppControl.isAndroid()) {
       const { AndroidBars } = CordovaAppControl.getPlugins();
       AndroidBars?.setFullScreen(isFullScreen);
 
-      if (isPaddingBottomAndroid || isPaddingTopAndroid) {
-        AndroidBars.getHeightSystemBars(({ heightStatus, heightNav }: any) => {
-          CordovaAppControl.heightStatus = heightStatus;
-          CordovaAppControl.heightNav = heightNav;
-
-          onHeightBars && onHeightBars({ heightStatus, heightNav });
-
-          CordovaAppControl.orientationMobileControl({
-            isPaddingBottom: isPaddingBottomAndroid,
-            isPaddingTop: isPaddingTopAndroid,
-            heightStatus,
-            heightNav,
-            isAutoSizeHeightRootElement
-          });
-        });
-      }
-
-      return;
+      AndroidBars?.getHeightSystemBars(({ heightStatus, heightNav }: any) => {
+        this.sendHeightBars({ heightStatus, heightNav, isAddedPaddingByKeyboard, sizesDisplay });
+      });
     }
+
     if (CordovaAppControl.isIOS()) {
       window?.StatusBar?.overlaysWebView(isFullScreen);
-      const CSS_CONST_TOP = "--android_ios11-top";
-      const { body } = document;
-      const CSS_CONST_BOTTOM = "--ios11-bottom";
-      body.style.setProperty(CSS_CONST_TOP, "env(safe-area-inset-top)");
-      body.style.setProperty(CSS_CONST_BOTTOM, "env(safe-area-inset-bottom)");
-
-      const getCssValueByProperty = (prop:string) => {
-        return parseInt(getComputedStyle(body).getPropertyValue(prop));
-      };
-
-
-      if (isPaddingBottomIos || isPaddingTopIos) {
-        const idTimeout = setTimeout(() => {
-          const heightStatus = getCssValueByProperty(CSS_CONST_TOP);
-          const heightNav = getCssValueByProperty(CSS_CONST_BOTTOM);
-
-          CordovaAppControl.heightStatus = heightStatus;
-          CordovaAppControl.heightNav = heightNav;
-
-          onHeightBars && onHeightBars({ heightStatus, heightNav });
-
-          CordovaAppControl.orientationMobileControl({
-            isPaddingBottom: isPaddingBottomIos,
-            isPaddingTop: isPaddingTopIos,
-            heightStatus,
-            heightNav,
-            isAutoSizeHeightRootElement
-          });
-          clearTimeout(idTimeout);
-        }, 250);
-      }
+      const idTimeout = setTimeout(() => {
+        const { heightStatus, heightNav } = this.getHeightSystemBars();
+        console.log("%csizesBars", "color: #50C878;", { heightStatus, heightNav });
+        this.sendHeightBars({ heightStatus, heightNav, isAddedPaddingByKeyboard, sizesDisplay });
+        clearTimeout(idTimeout);
+      }, 50);
     }
+
+    /*INFO: ВАЖНО!!! При тестировании через devTools если перезагрузить там приложение, то событие watch перестаёт отрабатывать 
+      и можно начать искать проблему которой нет.
+    */
+    this.Keyboard.events.subscribe("watch", (data) => {
+      this.controlState.setState({ keyboardData: data });
+
+      onWatchOpenKeyboard && onWatchOpenKeyboard(data);
+      const sizesDisplay = CordovaAppControl.getSizesDisplay();
+      const { heightNav } = this.controlState.getState();
+
+      this.sendPayloadInStore({ heightNav, isAddedPaddingByKeyboard, sizesDisplay, test: "keyboard watcher" });
+    });
   };
 
   public static dynamicMetaContentProperty() {
@@ -188,26 +203,26 @@ export class CordovaAppControl extends CordovaConfig {
     }
   }
 
-  public static onBackButton = (cb: ()=> void ) => {
+  public static onBackButton = (cb: () => void) => {
     document.addEventListener(
       "backbutton",
       (e) => {
         e.preventDefault();
         cb && cb();
       },
-      false
+      false,
     );
   };
 
   public static initEventsPauseResume(cbInfo: (status: "on" | "off") => void) {
-    if(CordovaAppControl.isIOS()){
-      document.addEventListener('active', (e) => {
-        console.log('Событие: active :', e);
-        cbInfo('on');
+    if (CordovaAppControl.isIOS()) {
+      document.addEventListener("active", (e) => {
+        console.log("Событие: active :", e);
+        cbInfo("on");
       });
-      document.addEventListener('resign', (e) => {
+      document.addEventListener("resign", (e) => {
         console.log("Событие: resign: ", e);
-        cbInfo('off');
+        cbInfo("off");
       });
       return;
     }
@@ -222,48 +237,10 @@ export class CordovaAppControl extends CordovaConfig {
     });
   }
 
-  public static setColorSystemBars({ isDarkIcon, colors, isDarkAndroidNavIcon }: ColorsSystemBarsProps["setColorSystemBars"]) {
-    ColorSystemBars.setColorSystemBars({ isDarkIcon, colors, isDarkAndroidNavIcon });
-    document.documentElement.setAttribute('data-theme', (!isDarkIcon) ? "dark" : "light" )
-  }
-
-  public static onOrientation(cb: ({ isPortrait }: Pick<CordovaAppControlPropsPrivate["getBottomSize"], 'isPortrait'>) => void) {
-    const findCb = CordovaAppControl.listOrientation_cb.find((itemCb) => (itemCb as any)?.cbOrigin === cb);
-  
-    if (!findCb) {
-      const payload = {
-        cbOrigin: cb,
-        modificationCb: (ev: React.ChangeEvent<HTMLDivElement & typeof globalThis> ) => {
-     
-          const oc_timer = setTimeout(() => {
-            clearTimeout(oc_timer);
-
-            cb({ isPortrait: ev.currentTarget?.innerHeight / ev.currentTarget?.innerWidth > 1 });
-          }, 500);
-        },
-      };
-      CordovaAppControl.listOrientation_cb.push(payload);
-      cb({ isPortrait: window.innerHeight / window.innerWidth > 1 });
-
-      window.addEventListener("orientationchange", (payload as any).modificationCb);
-    }
-  }
-
-  public static removeOrientation(cb: (...a: any) => void) {
-    const findCb = CordovaAppControl.listOrientation_cb.find((itemCb) => (itemCb as any)?.cbOrigin === cb);
-    if (findCb) {
-      window.removeEventListener("orientationchange", findCb.modificationCb);
-    }
-  }
-
-  private static setHeightInRootElement(size: number){
-    const rootEl = CordovaAppControl.Keyboard.getRootElement();
-    rootEl.style.transition = "height .1s ease";
-    rootEl.style.setProperty("height", `calc(100% - ${size}px)`);
+  public static setColorSystemBars(payload: ColorsSystemBarsProps["setColorSystemBars"]) {
+    ColorSystemBars.setColorSystemBars(payload);
+    // document.documentElement.setAttribute("data-theme", !isDarkIcon ? "dark" : "light");
   }
 }
 
-CordovaAppControl.onGetAutoBottomSize(({ bottomSize }) => {
-  ControlMobileAutoHeight.set({ autoBottomSize: bottomSize });
-});
 /*-------------------------------------------------------------------------------------------------*/
