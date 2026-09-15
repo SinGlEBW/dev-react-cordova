@@ -7,6 +7,7 @@ if (version !== undefined && Number.isInteger(version)) {
   console.error('Please provide a version number');
   process.exit(1);
 }
+
 // if (commit === undefined) {
 //   console.error('Please provide a commit message');
 //   process.exit(1);
