@@ -273,7 +273,7 @@ export class IndexedDBDriver {
               const updatedRecord = {
                 ...record,
                 ...payload,
-                updateAt: getLocalDateTime(),
+                ...('createdAt' in record && { updateAt: getLocalDateTime()})
               };
 
               const storageKey = record._key;
