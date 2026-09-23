@@ -1,5 +1,7 @@
 {
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
+    "baseUrl": "./",
     "target": "ES2020",
     "useDefineForClassFields": true,
     "module": "ESNext",
@@ -23,15 +25,20 @@
     "noFallthroughCasesInSwitch": true,
    
    "types": [
+      "node",
       "cordova-plugin-device", 
       "cordova-plugin-statusbar",
       "cordova-plugin-android-bars",
-    ]
+    ],
+
+    // "noUnusedParameters": false,
+    "paths": {
+      "@libs/*": ["src/libs/*"]
+    },
   },
 
-  "include": ["src"],
+  "include": ["src", "src/lib"],
   "references": [{
     "path": "./tsconfig.node.json"
   }],
-  "extends": "./tsconfig.lib.json"
 }

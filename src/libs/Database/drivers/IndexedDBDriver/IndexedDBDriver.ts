@@ -1,48 +1,110 @@
 import { getLocalDateTime } from "../helpers";
 import { StorageDriverProps } from "../types";
 
+/** Сколько ждём снятия блокировки, прежде чем вернуть ошибку. */
+const BLOCKED_TIMEOUT_MS = 3000;
+
 export class IndexedDBDriver {
   private dbName: string = "app-database";
-  private version: number = 1;
+  private connections = new Set<IDBDatabase>();
   private db: IDBDatabase | null = null;
+  private dbPromise: Promise<IDBDatabase> | null = null;
+  private schemaLock: Promise<unknown> = Promise.resolve();
+  /**
+   * true, пока идёт «закрытие» драйвера (closeDB/dispose/pagehide).
+   * Нужен, чтобы upgrade-запросы, завершившиеся уже после закрытия
+   * (например, в bfcache), не регистрировали своё соединение — иначе оно
+   * останется жить в замороженной вкладке и будет блокировать чужие upgrade.
+   */
+  private closing = false;
+  private onPageHide = () => this.closeAllConnections();
+
   constructor(options?: { dbName?: string }) {
     this.dbName = options?.dbName || "app-database";
+
+    // Закрываем соединения при уходе со страницы (в т.ч. в bfcache),
+    // чтобы «замороженная» вкладка не блокировала upgrade в других вкладках.
+    if (typeof window !== "undefined") {
+      window.addEventListener("pagehide", this.onPageHide);
+    }
   }
-  private async ensureTableExists(nameTable: string): Promise<void> {
-    const currentVersion = await this.getCurrentDBVersion();
 
-    await this.openDB();
-    if (this.db?.objectStoreNames.contains(nameTable)) return;
-    this.closeDB();
-
-    return new Promise((resolve, reject) => {
-      const newVersion = currentVersion + 1;
-      const request = indexedDB.open(this.dbName, newVersion);
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(nameTable)) {
-          const store = db.createObjectStore(nameTable, {
-            autoIncrement: false,
-          });
-          store.createIndex("_key", "_key", { unique: true });
-          store.createIndex("id", "id", { unique: false });
-          // store.createIndex("createdAt", "createdAt", { unique: false });
-          // store.createIndex("updateAt", "updateAt", { unique: false });
-        }
-      };
-
-      request.onsuccess = () => {
-        this.db = request.result;
-        resolve();
-      };
-
-      request.onerror = () => {
-        reject(new Error(`Не удалось создать таблицу ${nameTable}`));
-      };
-    });
+  /**
+   * Явное освобождение ресурсов. Вызывать, если драйвер создаётся/уничтожается
+   * многократно (например, в React-компоненте), иначе listener будет копиться.
+   */
+  dispose(): void {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("pagehide", this.onPageHide);
+    }
+    this.closeAllConnections();
   }
-  private async getCurrentDBVersion(): Promise<number> {
+
+  // ---------------------------------------------------------------------------
+  // Управление соединениями
+  // ---------------------------------------------------------------------------
+
+  private trackConnection(db: IDBDatabase): void {
+    this.connections.add(db);
+
+    // Если другая вкладка поднимает версию — закрываемся, чтобы не блокировать.
+    db.onversionchange = () => {
+      this.closeConnection(db);
+      if (this.db === db) this.db = null;
+    };
+
+    // Дополнительная очистка (не везде поддерживается, но не мешает).
+    db.onclose = () => {
+      this.connections.delete(db);
+      if (this.db === db) this.db = null;
+    };
+  }
+
+  private closeConnection(db: IDBDatabase): void {
+    this.connections.delete(db);
+    try {
+      db.close();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private closeAllConnections(): void {
+    this.closing = true;
+
+    for (const db of this.connections) {
+      try {
+        db.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.connections.clear();
+    this.db = null;
+    this.dbPromise = null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Мьютекс для операций, меняющих схему (upgrade version)
+  // ---------------------------------------------------------------------------
+
+  private withSchemaLock<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.schemaLock.then(fn, fn);
+    this.schemaLock = run.catch(() => {});
+    return run;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Утилиты
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Возвращает текущую версию БД.
+   * null — не удалось определить (ошибка/приватный режим/блокировка).
+   * ВАЖНО: вызывать только после closeAllConnections (внутри withSchemaLock),
+   * иначе временное соединение может помешать чужому upgrade.
+   */
+  private async getCurrentDBVersion(): Promise<number | null> {
     return new Promise((resolve) => {
       const request = indexedDB.open(this.dbName);
       request.onsuccess = () => {
@@ -51,82 +113,11 @@ export class IndexedDBDriver {
         db.close();
         resolve(version);
       };
-      request.onerror = () => resolve(0); // Если БД нет
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
     });
   }
-  isSupported: StorageDriverProps["isSupported"] = () => {
-    return !!window.indexedDB;
-  };
 
-  openDB: StorageDriverProps["openDB"] = async () => {
-    if (this.db) return this.db;
-
-    const currentVersion = await this.getCurrentDBVersion();
-    const versionToOpen = currentVersion || 1;
-
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, versionToOpen);
-
-      request.onerror = () => reject({ status: false, msg: "Ошибка открытия IndexedDB" });
-      request.onsuccess = () => {
-        this.db = request.result;
-        resolve(this.db);
-      };
-
-      request.onupgradeneeded = () => {
-        // Базовые таблицы если нужно
-      };
-    });
-  };
-
-  closeDB: StorageDriverProps["closeDB"] = () => {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
-    }
-  };
-
-  deleteDatabase: StorageDriverProps["deleteDatabase"] = async () => {
-    const dbName = this.dbName;
-    try {
-      // Закрываем текущее соединение если оно открыто
-      this.closeDB();
-
-      return new Promise((resolve) => {
-        const request = indexedDB.deleteDatabase(dbName);
-
-        request.onsuccess = () => {
-          console.log(`✅ База данных "${dbName}" успешно удалена`);
-          resolve({
-            status: true,
-            msg: `База данных "${dbName}" удалена`,
-          });
-        };
-
-        request.onerror = (event) => {
-          const error = (event.target as IDBOpenDBRequest).error;
-          console.error(`❌ Ошибка удаления базы "${dbName}":`, error);
-          resolve({
-            status: false,
-            msg: `Ошибка удаления базы данных: ${error?.message || "неизвестная ошибка"}`,
-          });
-        };
-
-        request.onblocked = () => {
-          console.warn(`⚠️ Удаление базы "${dbName}" заблокировано. Есть активные соединения`);
-          resolve({
-            status: false,
-            msg: `Удаление заблокировано. Закройте другие вкладки с этим приложением`,
-          });
-        };
-      });
-    } catch (error) {
-      return {
-        status: false,
-        msg: `Ошибка: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-  };
   private getStore(nameTable: string, mode: IDBTransactionMode = "readonly") {
     if (!this.db) throw new Error("База данных не открыта");
     if (!this.db.objectStoreNames.contains(nameTable)) {
@@ -136,7 +127,107 @@ export class IndexedDBDriver {
     return transaction.objectStore(nameTable);
   }
 
-  query: StorageDriverProps["query"] = async (sql) => {
+  // ---------------------------------------------------------------------------
+  // Публичный API
+  // ---------------------------------------------------------------------------
+
+  isSupported: StorageDriverProps["isSupported"] = () => {
+    return !!window.indexedDB;
+  };
+
+  openDB: StorageDriverProps["openDB"] = async () => {
+    if (this.db) return this.db;
+    if (this.dbPromise) return this.dbPromise;
+
+    // Сбрасываем флаг закрытия — начинаем новую «сессию» работы с БД.
+    this.closing = false;
+
+    this.dbPromise = (async () => {
+      return new Promise<IDBDatabase>((resolve, reject) => {
+        // Открытие без версии никогда не блокируется (версия не поднимается).
+        const request = indexedDB.open(this.dbName);
+
+        request.onsuccess = () => {
+          const db = request.result;
+          if (this.closing) {
+            // Драйвер закрыли, пока запрос был в полёте — не регистрируем.
+            try {
+              db.close();
+            } catch {
+              /* ignore */
+            }
+            reject({ status: false, msg: "Драйвер закрыт" });
+            return;
+          }
+          this.db = db;
+          this.trackConnection(db);
+          resolve(db);
+        };
+
+        request.onerror = () => {
+          this.dbPromise = null;
+          reject({ status: false, msg: "Ошибка открытия IndexedDB" });
+        };
+      });
+    })();
+
+    return this.dbPromise;
+  };
+
+  closeDB: StorageDriverProps["closeDB"] = () => {
+    this.closeAllConnections();
+  };
+
+  deleteDatabase: StorageDriverProps["deleteDatabase"] = async () => {
+    const dbName = this.dbName;
+    try {
+      this.closeAllConnections();
+
+      return await new Promise((resolve) => {
+        let settled = false;
+        let blockedTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const finish = (result: { status: boolean; msg: string }) => {
+          if (settled) return;
+          settled = true;
+          if (blockedTimer) clearTimeout(blockedTimer);
+          resolve(result);
+        };
+
+        const request = indexedDB.deleteDatabase(dbName);
+
+        request.onsuccess = () => {
+          finish({ status: true, msg: `База данных "${dbName}" удалена` });
+        };
+
+        request.onerror = (event) => {
+          const error = (event.target as IDBOpenDBRequest).error;
+          finish({
+            status: false,
+            msg: `Ошибка удаления базы данных: ${error?.message || "неизвестная ошибка"}`,
+          });
+        };
+
+        request.onblocked = () => {
+          // Не завершаем сразу — даём другим вкладкам получить versionchange и закрыться.
+          console.warn(`⚠️ Удаление базы "${dbName}" заблокировано, ждём...`);
+          blockedTimer = setTimeout(() => {
+            finish({
+              status: false,
+              msg: `Удаление заблокировано. Закройте другие вкладки с этим приложением`,
+            });
+          }, BLOCKED_TIMEOUT_MS);
+        };
+      });
+    } catch (error) {
+      return {
+        status: false,
+        msg: `Ошибка: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  };
+
+  query: StorageDriverProps["query"] = async () => {
     return { status: false, msg: "IndexedDB не поддерживает SQL запросы" };
   };
 
@@ -155,51 +246,186 @@ export class IndexedDBDriver {
     }
   };
 
-  dropTable: StorageDriverProps["dropTable"] = async (nameTable) => {
-    try {
-      await this.openDB();
-      if (!this.db) return { status: false, msg: "База не открыта" };
+  // ---------------------------------------------------------------------------
+  // Создание store
+  // ---------------------------------------------------------------------------
 
-      if (!this.db.objectStoreNames.contains(nameTable)) {
-        return { status: false, msg: `Таблица ${nameTable} не существует` };
+  private async ensureTableExists(nameTable: string): Promise<void> {
+    if (this.db && this.db.objectStoreNames.contains(nameTable)) return;
+
+    await this.withSchemaLock(async () => {
+      if (this.db && this.db.objectStoreNames.contains(nameTable)) return;
+
+      this.closeAllConnections();
+      // closeAllConnections выставил closing = true — сбрасываем,
+      // потому что сейчас мы собираемся открыть БД заново.
+      this.closing = false;
+
+      const currentVersion = await this.getCurrentDBVersion();
+      if (currentVersion === null) {
+        throw new Error("Не удалось определить версию базы данных");
       }
+      const newVersion = currentVersion + 1;
 
-      return new Promise((resolve) => {
-        const currentVersion = this.db?.version || this.version;
-        const newVersion = currentVersion + 1;
-        this.closeDB();
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        let blockedTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const finish = (err?: Error) => {
+          if (settled) return;
+          settled = true;
+          if (blockedTimer) clearTimeout(blockedTimer);
+          if (err) reject(err);
+          else resolve();
+        };
 
         const request = indexedDB.open(this.dbName, newVersion);
 
         request.onupgradeneeded = (event) => {
           const db = (event.target as IDBOpenDBRequest).result;
-          if (db.objectStoreNames.contains(nameTable)) {
-            db.deleteObjectStore(nameTable);
-            console.log(`✅ Таблица ${nameTable} удалена в onupgradeneeded`);
+          if (!db.objectStoreNames.contains(nameTable)) {
+            const store = db.createObjectStore(nameTable, { autoIncrement: false });
+            store.createIndex("_key", "_key", { unique: true });
+            store.createIndex("id", "id", { unique: false });
           }
         };
 
         request.onsuccess = () => {
-          this.db = request.result;
-          console.log(`✅ База открыта с новой версией: ${this.db.version}`);
-          resolve({ status: true, msg: `Таблица ${nameTable} удалена` });
+          const db = request.result;
+          if (this.closing) {
+            // Драйвер закрыли, пока upgrade был в полёте (pagehide/bfcache).
+            // Не регистрируем соединение, чтобы не блокировать чужие upgrade.
+            try {
+              db.close();
+            } catch {
+              /* ignore */
+            }
+            finish();
+            return;
+          }
+          // Соединение регистрируем ВСЕГДА, даже если операция уже "провалена"
+          // по таймауту, иначе оно утечёт и будет блокировать будущие upgrade'ы.
+          this.db = db;
+          this.trackConnection(db);
+          finish();
         };
 
-        request.onerror = (error) => {
-          console.error(`❌ Ошибка удаления таблицы:`, error);
-          resolve({ status: false, msg: `Ошибка удаления таблицы ${nameTable}: ${error}` });
+        request.onerror = () => {
+          finish(new Error(`Не удалось создать таблицу ${nameTable}`));
         };
 
-        // ✅ Добавляем обработчик blocked (на случай если есть другие соединения)
         request.onblocked = () => {
-          console.warn(`⚠️ База заблокирована другими соединениями`);
-          resolve({ status: false, msg: `База заблокирована, закройте другие соединения` });
+          console.warn(`⚠️ Создание таблицы ${nameTable} заблокировано, ждём...`);
+          blockedTimer = setTimeout(() => {
+            finish(
+              new Error(`База заблокирована другим соединением. Закройте другие вкладки приложения`),
+            );
+          }, BLOCKED_TIMEOUT_MS);
         };
       });
-    } catch (error) {
-      return { status: false, msg: `Ошибка: ${error}` };
-    }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Удаление store
+  // ---------------------------------------------------------------------------
+
+  dropTable: StorageDriverProps["dropTable"] = async (nameTable) => {
+    return this.withSchemaLock(async () => {
+      try {
+        this.closeAllConnections();
+        // Сбрасываем closing — сейчас будем открывать БД заново.
+        this.closing = false;
+
+        const currentVersion = await this.getCurrentDBVersion();
+        if (currentVersion === null) {
+          return { status: false, msg: `Не удалось определить версию базы данных` };
+        }
+
+        // Проверяем существование store на временном соединении.
+        // null — не удалось проверить (гонка/блокировка); в этом случае
+        // не врём пользователю «таблицы нет», а идём в upgrade как есть.
+        const hasStore = await new Promise<boolean | null>((resolve) => {
+          const req = indexedDB.open(this.dbName, currentVersion);
+          req.onsuccess = () => {
+            const db = req.result;
+            const exists = db.objectStoreNames.contains(nameTable);
+            db.close();
+            resolve(exists);
+          };
+          req.onerror = () => resolve(null);
+          req.onblocked = () => resolve(null);
+        });
+
+        if (hasStore === false) {
+          return { status: false, msg: `Таблица ${nameTable} не существует` };
+        }
+
+        const newVersion = currentVersion + 1;
+
+        return await new Promise<{ status: boolean; msg: string }>((resolve) => {
+          let settled = false;
+          let blockedTimer: ReturnType<typeof setTimeout> | null = null;
+
+          const finish = (result: { status: boolean; msg: string }) => {
+            if (settled) return;
+            settled = true;
+            if (blockedTimer) clearTimeout(blockedTimer);
+            resolve(result);
+          };
+
+          const request = indexedDB.open(this.dbName, newVersion);
+
+          request.onupgradeneeded = (event) => {
+            const db = (event.target as IDBOpenDBRequest).result;
+            if (db.objectStoreNames.contains(nameTable)) {
+              db.deleteObjectStore(nameTable);
+              console.log(`✅ Таблица ${nameTable} удалена в onupgradeneeded`);
+            }
+          };
+
+          request.onsuccess = () => {
+            const db = request.result;
+            if (this.closing) {
+              // Драйвер закрыли, пока upgrade был в полёте (pagehide/bfcache).
+              try {
+                db.close();
+              } catch {
+                /* ignore */
+              }
+              finish({ status: false, msg: `Драйвер закрыт` });
+              return;
+            }
+            // Всегда регистрируем соединение, даже если уже истёк таймаут.
+            this.db = db;
+            this.trackConnection(db);
+            console.log(`✅ База открыта с новой версией: ${db.version}`);
+            finish({ status: true, msg: `Таблица ${nameTable} удалена` });
+          };
+
+          request.onerror = () => {
+            finish({ status: false, msg: `Ошибка удаления таблицы ${nameTable}` });
+          };
+
+          request.onblocked = () => {
+            console.warn(`⚠️ Удаление таблицы ${nameTable} заблокировано, ждём...`);
+            blockedTimer = setTimeout(() => {
+              finish({
+                status: false,
+                msg: `База заблокирована, закройте другие соединения`,
+              });
+            }, BLOCKED_TIMEOUT_MS);
+          };
+        });
+      } catch (error) {
+        return { status: false, msg: `Ошибка: ${error}` };
+      }
+    });
   };
+
+  // ---------------------------------------------------------------------------
+  // CRUD
+  // ---------------------------------------------------------------------------
 
   setData: StorageDriverProps["setData"] = async (nameTable, key, payload, options) => {
     try {
@@ -221,6 +447,7 @@ export class IndexedDBDriver {
           request.onsuccess = () => resolve(true);
           request.onerror = () => reject(request.error);
         });
+
         return { status: true, msg: `Данные добавлены в ${nameTable}` };
       } catch (addError) {
         if ((addError as any)?.name === "ConstraintError") {
@@ -273,7 +500,7 @@ export class IndexedDBDriver {
               const updatedRecord = {
                 ...record,
                 ...payload,
-                ...('createdAt' in record && { updateAt: getLocalDateTime()})
+                ...("createdAt" in record && { updateAt: getLocalDateTime() }),
               };
 
               const storageKey = record._key;
@@ -368,6 +595,10 @@ export class IndexedDBDriver {
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // Фильтры
+  // ---------------------------------------------------------------------------
+
   private applyWhereFilter(data: any[], where: object, condition: "AND" | "OR" = "AND"): any[] {
     return data.filter((item) => {
       const conditions = Object.entries(where).map(([key, value]) => item[key] === value);
@@ -379,7 +610,11 @@ export class IndexedDBDriver {
     });
   }
 
-  private applyWhereKeyFilter(data: any[], whereKey: Record<string, string[]>, condition: "AND" | "OR" = "AND"): any[] {
+  private applyWhereKeyFilter(
+    data: any[],
+    whereKey: Record<string, string[]>,
+    condition: "AND" | "OR" = "AND",
+  ): any[] {
     return data.filter((item) => {
       const conditions = Object.entries(whereKey).map(([key, values]) => values.includes(item[key]));
 
@@ -390,7 +625,12 @@ export class IndexedDBDriver {
       }
     });
   }
-  private applyIgnoreWhereFilter(data: any[], ignoreWhere: Record<string, string[]>, condition: "AND" | "OR" = "AND"): any[] {
+
+  private applyIgnoreWhereFilter(
+    data: any[],
+    ignoreWhere: Record<string, string[]>,
+    condition: "AND" | "OR" = "AND",
+  ): any[] {
     return data.filter((item) => {
       const conditions = Object.entries(ignoreWhere).map(([key, values]) => !values.includes(item[key]));
 
@@ -401,23 +641,25 @@ export class IndexedDBDriver {
       }
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Удаление данных
+  // ---------------------------------------------------------------------------
+
   removeData: StorageDriverProps["removeData"] = async (nameTable, params) => {
     try {
       await this.ensureTableExists(nameTable);
       const store = this.getStore(nameTable, "readwrite");
 
-      // Вспомогательная функция для фильтрации с учетом ignoreWhere
       const applyFilters = (results: any[]) => {
         let filtered = results;
 
-        // Применяем where фильтр
         if (params?.where && Object.keys(params.where).length > 0) {
           filtered = filtered.filter((item) => {
             return Object.entries(params.where!).every(([key, value]) => item[key] === value);
           });
         }
 
-        // Применяем whereKey фильтр
         if (params?.whereKey && Object.keys(params.whereKey).length > 0) {
           filtered = filtered.filter((item) => {
             return Object.entries(params.whereKey!).every(([key, values]) => values.includes(item[key]));
@@ -427,7 +669,7 @@ export class IndexedDBDriver {
         if (params?.ignoreWhere && Object.keys(params.ignoreWhere).length > 0) {
           filtered = filtered.filter((item) => {
             return Object.entries(params.ignoreWhere!).every(
-              ([key, values]) => !values.includes(item[key]), // Исключаем значения
+              ([key, values]) => !values.includes(item[key]),
             );
           });
         }
@@ -435,7 +677,6 @@ export class IndexedDBDriver {
         return filtered;
       };
 
-      // Удаление по _key через where (игнорируем ignoreWhere для точечного удаления)
       if (params?.where?._key) {
         return new Promise((resolve) => {
           const request = store.delete(params.where!._key);
@@ -450,7 +691,6 @@ export class IndexedDBDriver {
         });
       }
 
-      // Удаление по комбинированным условиям (where, whereKey, ignoreWhere)
       if (params && (params.where || params.whereKey || params.ignoreWhere)) {
         return new Promise((resolve) => {
           const getRequest = store.getAll();
@@ -487,7 +727,6 @@ export class IndexedDBDriver {
         });
       }
 
-      // Очистка всей таблицы (если нет условий)
       return new Promise((resolve) => {
         const request = store.clear();
 

@@ -116,6 +116,7 @@ export class IndexedDBDriver {
 
   dropTable: StorageDriverProps["dropTable"] = async (nameTable) => {
     try {
+   
       await this.openDB();
       if (!this.db) return { status: false, msg: "База не открыта" };
 
